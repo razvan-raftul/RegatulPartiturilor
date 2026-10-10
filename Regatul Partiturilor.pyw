@@ -7,7 +7,13 @@ import sys
 import threading
 import traceback
 
-import wx
+# În programul instalat (fără consolă) nu există stdout/stderr; unele biblioteci scriu acolo și s-ar opri cu eroare.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+
+import wx  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import VERSIUNE, actualizare, braille, cuvinte, partitura, recunoastere  # noqa: E402
