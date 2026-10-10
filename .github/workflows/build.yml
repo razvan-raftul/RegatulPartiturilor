@@ -44,10 +44,11 @@ jobs:
       - name: Proba executabilului
         shell: pwsh
         run: |
-          $p = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -PassThru
-          Start-Sleep -Seconds 20
-          if ($p.HasExited) { Write-Error "Programul s-a inchis singur la pornire (cod $($p.ExitCode))"; exit 1 }
-          Stop-Process -Id $p.Id -Force
+          $p = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest.txt' -PassThru -Wait
+          if (-not (Test-Path autotest.txt)) { Write-Error "Programul nu a scris rezultatul probei"; exit 1 }
+          $t = Get-Content autotest.txt -Raw -Encoding utf8
+          Write-Host $t
+          if ($t -notmatch 'AUTOTEST OK') { Write-Error "Proba programului a esuat"; exit 1 }
       - name: Program de instalare
         shell: pwsh
         run: |
@@ -64,4 +65,4 @@ jobs:
           $ErrorActionPreference = 'Continue'
           Set-Content -Path version.txt -Value $env:APPVER -NoNewline -Encoding ascii
           gh release delete latest --yes --cleanup-tag 2>$null
-          gh release create latest RegatulPartiturilor-Setup.exe version.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
+          gh release create latest RegatulPartiturilor-Setup.exe version.txt autotest.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
