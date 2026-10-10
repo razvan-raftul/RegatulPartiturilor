@@ -490,7 +490,19 @@ def autotest(fisier, iesire):
         fo.write('\n'.join(rez))
 
 
+def jurnal_erori(tip, val, tb):
+    """Orice eroare neprevăzută se scrie în %APPDATA%\\Regatul Partiturilor\\erori.txt, ca s-o putem repara."""
+    try:
+        os.makedirs(DIR_SETARI, exist_ok=True)
+        with open(os.path.join(DIR_SETARI, 'erori.txt'), 'a', encoding='utf-8') as f:
+            f.write(f'--- versiunea {VERSIUNE}\n' + ''.join(traceback.format_exception(tip, val, tb)) + '\n')
+    except Exception:
+        pass
+    sys.__excepthook__(tip, val, tb)
+
+
 def main():
+    sys.excepthook = jurnal_erori
     if len(sys.argv) >= 4 and sys.argv[1] == '--autotest':
         autotest(sys.argv[2], sys.argv[3])
         return
