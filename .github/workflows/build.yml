@@ -1,0 +1,67 @@
+name: build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      APPVER: 0.1.${{ github.run_number }}
+      PYTHONUTF8: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Componente
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r cerinte.txt pyinstaller
+      - name: Versiune
+        shell: pwsh
+        run: Set-Content -Path nucleu\_build.py -Value "VERSIUNE = '$env:APPVER'" -Encoding utf8
+      - name: Proba nucleului
+        run: python -c "from nucleu import partitura, cuvinte, braille, VERSIUNE; P=partitura.incarca('Exemple/Mozart - Sonata K545, expozitia.mxl'); print(VERSIUNE); print(P.descrie(1,2,[0,1],cuvinte.Optiuni())[:300].encode('ascii','replace').decode()); print(len(braille.din_scor(P.extrage(1,4,[0,1]))))"
+      - name: Executabil
+        run: >
+          pyinstaller --noconfirm --windowed --name RegatulPartiturilor --icon icon.ico
+          --add-data "icon.ico;."
+          --collect-submodules music21 --collect-data music21
+          --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
+          "Regatul Partiturilor.pyw"
+      - name: Fără colecția de partituri din music21 (nu e folosită, ar mări mult programul)
+        shell: pwsh
+        run: |
+          $c = "dist\RegatulPartiturilor\_internal\music21\corpus"
+          if (Test-Path $c) { Get-ChildItem $c -Directory | Remove-Item -Recurse -Force }
+          "{0:N0} MB" -f ((Get-ChildItem dist -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+      - name: Proba executabilului
+        shell: pwsh
+        run: |
+          $p = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { Write-Error "Programul s-a inchis singur la pornire (cod $($p.ExitCode))"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+      - name: Program de instalare
+        shell: pwsh
+        run: |
+          try { Invoke-WebRequest "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/Romanian.isl" -OutFile Romanian.isl } catch { Write-Host "Fara traducere romana" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=$env:APPVER" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publicare
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Set-Content -Path version.txt -Value $env:APPVER -NoNewline -Encoding ascii
+          gh release delete latest --yes --cleanup-tag 2>$null
+          gh release create latest RegatulPartiturilor-Setup.exe version.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
