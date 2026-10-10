@@ -63,6 +63,11 @@ jobs:
           gh release delete diagnostic --yes --cleanup-tag 2>$null
           gh release create diagnostic diagnostic.txt --prerelease --title "Diagnostic $env:APPVER" --notes "Rezultatul probei automate"
           if ($t -notmatch 'AUTOTEST OK') { Write-Host "Proba programului a esuat"; exit 1 }
+          # aceeasi proba si pe programul adevarat, fara consola
+          $q = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest2.txt' -PassThru
+          if (-not $q.WaitForExit(240000)) { Stop-Process -Id $q.Id -Force; Write-Host "Programul fara consola nu s-a terminat"; exit 1 }
+          if (-not (Test-Path autotest2.txt) -or ((Get-Content autotest2.txt -Raw -Encoding utf8) -notmatch 'AUTOTEST OK')) { Write-Host "Proba programului fara consola a esuat"; exit 1 }
+          Write-Host "Ambele probe au trecut"
           exit 0
       - name: Program de instalare
         shell: pwsh
