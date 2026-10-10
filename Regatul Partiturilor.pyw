@@ -77,7 +77,7 @@ class Fereastra(wx.Frame):
             pass
         if fisier:
             wx.CallAfter(self.deschide, fisier)
-        if actualizare.instalat():
+        if actualizare.instalat() and fisier != '--autotest':
             wx.CallLater(1500, self.verifica_actualizari, False)
 
     # ---------------- interfață ----------------
@@ -466,7 +466,34 @@ class Picurare(wx.FileDropTarget):
         return True
 
 
+def autotest(fisier, iesire):
+    """Probă fără fereastră vizibilă, folosită la compilarea pe GitHub: partitură, cuvinte, Braille, fereastră."""
+    rez = []
+    try:
+        P = partitura.incarca(fisier)
+        rez.append('VERSIUNE ' + VERSIUNE)
+        rez.append(P.descriere_generala())
+        rez.append(P.descrie(P.numere[0], P.numere[0] + 1, list(range(len(P.portative))), cuvinte.Optiuni()))
+        rez.append(braille.din_scor(P.extrage(P.numere[0], P.numere[0] + 3, list(range(len(P.portative))))))
+        app = wx.App(False)
+        f = Fereastra()
+        f._deschisa(P, None)
+        f.lista.SetSelection(3)
+        f.actualizeaza()
+        rez.append('FEREASTRA ' + f.t_cuvinte.GetValue()[:200])
+        f.Destroy()
+        app.Destroy()
+        rez.append('AUTOTEST OK')
+    except Exception:
+        rez.append('AUTOTEST EROARE\n' + traceback.format_exc())
+    with open(iesire, 'w', encoding='utf-8') as fo:
+        fo.write('\n'.join(rez))
+
+
 def main():
+    if len(sys.argv) >= 4 and sys.argv[1] == '--autotest':
+        autotest(sys.argv[2], sys.argv[3])
+        return
     app = wx.App(False)
     app.SetAppName(NUME)
     fisier = sys.argv[1] if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]) else None
