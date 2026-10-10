@@ -41,14 +41,29 @@ jobs:
           $c = "dist\RegatulPartiturilor\_internal\music21\corpus"
           if (Test-Path $c) { Get-ChildItem $c -Directory | Remove-Item -Recurse -Force }
           "{0:N0} MB" -f ((Get-ChildItem dist -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+      - name: Executabil de proba (cu consola, ca sa se vada erorile)
+        run: >
+          pyinstaller --noconfirm --console --name RPTest --distpath testdist --workpath testbuild
+          --add-data "icon.ico;."
+          --collect-submodules music21 --collect-data music21
+          --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
+          "Regatul Partiturilor.pyw"
       - name: Proba executabilului
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $p = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest.txt' -PassThru -Wait
-          if (-not (Test-Path autotest.txt)) { Write-Error "Programul nu a scris rezultatul probei"; exit 1 }
-          $t = Get-Content autotest.txt -Raw -Encoding utf8
-          Write-Host $t
-          if ($t -notmatch 'AUTOTEST OK') { Write-Error "Proba programului a esuat"; exit 1 }
+          $ErrorActionPreference = 'Continue'
+          $p = Start-Process "testdist\RPTest\RPTest.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest.txt' -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
+          if (-not $p.WaitForExit(240000)) { Stop-Process -Id $p.Id -Force; Add-Content err.txt "TIMEOUT: programul nu s-a terminat in 4 minute" }
+          $t = ''; if (Test-Path autotest.txt) { $t = Get-Content autotest.txt -Raw -Encoding utf8 }
+          $d = "AUTOTEST:`n$t`n`nSTDOUT:`n" + (Get-Content out.txt -Raw) + "`n`nSTDERR:`n" + (Get-Content err.txt -Raw)
+          Set-Content diagnostic.txt $d -Encoding utf8
+          Write-Host $d
+          gh release delete diagnostic --yes --cleanup-tag 2>$null
+          gh release create diagnostic diagnostic.txt --prerelease --title "Diagnostic $env:APPVER" --notes "Rezultatul probei automate"
+          if ($t -notmatch 'AUTOTEST OK') { Write-Host "Proba programului a esuat"; exit 1 }
+          exit 0
       - name: Program de instalare
         shell: pwsh
         run: |
@@ -65,4 +80,4 @@ jobs:
           $ErrorActionPreference = 'Continue'
           Set-Content -Path version.txt -Value $env:APPVER -NoNewline -Encoding ascii
           gh release delete latest --yes --cleanup-tag 2>$null
-          gh release create latest RegatulPartiturilor-Setup.exe version.txt autotest.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
+          gh release create latest RegatulPartiturilor-Setup.exe version.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
