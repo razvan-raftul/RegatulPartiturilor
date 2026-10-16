@@ -1,2 +1,5 @@
 music21>=9.1
 wxPython>=4.2.2
+numpy
+Pillow
+pypdfium2>=4.30

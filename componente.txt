@@ -1,0 +1,7 @@
+# Programele ajutătoare care vin odată cu Regatul Partiturilor: Audiveris și MuseScore (installerele oficiale, Windows)
+# și homr (al doilea program de recunoaștere, împachetat pe GitHub într-un homr.exe cu modelele lui).
+# Dacă schimbi un link aici, workflow-ul „componente” le pregătește din nou,
+# iar programul de instalare le descarcă din nou la următoarea actualizare.
+Audiveris = https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-windowsConsole-x86_64.msi
+MuseScore = https://github.com/musescore/MuseScore/releases/download/v4.7.5/MuseScore-Studio-4.7.5.260831071-x86_64.msi
+homr = homr[cpu] @ git+https://github.com/liebharc/homr@92f2344f1f1192227e930d3d3b4c17dd8aaf4e8f
