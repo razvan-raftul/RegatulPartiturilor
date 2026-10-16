@@ -83,6 +83,7 @@ class Partitura:
         self.scor = scor
         self.cale = cale
         self.avertismente = list(avertismente or [])
+        self.nesigure = {}             # {număr măsură: motiv} la partiturile recunoscute din imagini
         self.portative = numeste_portative(scor)
         if not self.portative:
             raise EroarePartitura('Partitura nu are nicio portativă cu note.')
@@ -147,6 +148,8 @@ class Partitura:
                 continue
             m0 = self.portative[portative[0]].parte.measure(nr) if portative else None
             cap = 'Anacruza.' if nr == 0 else f'Măsura {nr}.'
+            if nr in self.nesigure:
+                cap += f' Atenție, de verificat: {self.nesigure[nr]}.'
             ev = []
             if m0 is not None:
                 ev = cuvinte._evenimente_masura(m0, opt)
@@ -186,18 +189,32 @@ class Partitura:
         return sc
 
 
-def incarca(cale: str, progres=None) -> Partitura:
+def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, original=None) -> Partitura:
+    """baza/folder/original: la o singură piesă dintr-o carte (cale = PDF temporar cu paginile ei)."""
     ext = os.path.splitext(cale)[1].lower()
     avert = []
+    nesigure = {}
     if ext in FORMATE_MUSESCORE:
         cale_xml = recunoastere.din_musescore(cale)
         scor = converter.parse(cale_xml)
     elif ext in FORMATE_IMAGINE:
-        fisiere = recunoastere.din_imagine(cale, progres)
-        scor = converter.parse(fisiere[0])
-        avert.append('Partitura a fost recunoscută dintr-o imagine sau un PDF, deci pot exista greșeli. Verifică pasajele care sună ciudat.')
-        if len(fisiere) > 1:
-            avert.append(f'Recunoașterea a găsit {len(fisiere)} părți separate; am deschis-o pe prima. Celelalte sunt în același folder cu partitura.')
+        r = recunoastere.din_imagine(cale, progres, pastreaza=pastreaza, baza=baza, folder=folder, original=original)
+        scor = r.scor
+        nesigure = r.nesigure
+        if not r.programe:
+            avert.append('Partitura a fost recunoscută mai devreme; am deschis rezultatul salvat în folderul Recunoscute.')
+        elif len(r.programe) > 1:
+            avert.append(f'Partitura a fost recunoscută din imagine de {len(r.programe)} programe ({", ".join(r.programe)}), '
+                         'comparate măsură cu măsură.')
+        else:
+            avert.append(f'Partitura a fost recunoscută din imagine cu {r.programe[0]}.')
+        if nesigure:
+            avert.append(f'Măsuri de verificat: {len(nesigure)}, marcate în listă cu „de verificat”. '
+                         'Control U duce la următoarea. Celelalte au fost citite la fel de toate programele.')
+        else:
+            avert.append('Toate măsurile au fost citite la fel și umplu corect timpii.')
+        if r.probleme:
+            avert.append('Nu a mers: ' + '; '.join(r.probleme)[:300])
     elif ext in FORMATE_DIRECTE:
         scor = converter.parse(cale)
     else:
@@ -207,4 +224,6 @@ def incarca(cale: str, progres=None) -> Partitura:
         avert.append('Fișierul are mai multe piese; am deschis-o pe prima.')
     if not isinstance(scor, stream.Score):
         s = stream.Score(); s.insert(0, scor); scor = s
-    return Partitura(scor, cale, avert)
+    P = Partitura(scor, cale, avert)
+    P.nesigure = nesigure
+    return P
