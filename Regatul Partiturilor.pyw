@@ -18,7 +18,7 @@ if sys.stderr is None:
 import wx  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nucleu import VERSIUNE, actualizare, braille, captura, cuprins, cuvinte, partitura, recunoastere, redare  # noqa: E402
+from nucleu import VERSIUNE, actualizare, braille, captura, cuprins, cuvinte, partitura, recunoastere, redare, voce  # noqa: E402
 
 NUME = 'Regatul Partiturilor'
 INDEMN = 'Nicio partitură deschisă. Deschide o partitură cu Control O.'
@@ -39,7 +39,7 @@ Control plus 2: textul în Braille.
 Control plus L: lista de măsuri.
 Control plus S: salvează textul în cuvinte.
 Control plus B: salvează Braille pentru imprimantă (fișier BRF).
-Control plus Shift plus B: din PDF în Braille, într-un singur pas (alegi PDF-ul, primești fișierul BRF lângă el).
+Control plus Shift plus B: din PDF în Braille, într-un singur pas (alegi PDF-ul, primești fișierul BRF în folderul Recunoscute, în subfolderul cu numele PDF-ului).
 La o carte cu multe pagini (de exemplu o culegere de studii), programul găsește singur unde începe fiecare piesă
 și te întreabă pe care o deschizi: Studiul 2, paginile 3-4, și așa mai departe. Poți alege și toată cartea
 sau scrie tu paginile. Se recunosc doar paginile alese, deci durează mult mai puțin.
@@ -110,7 +110,10 @@ class Fereastra(wx.Frame):
         if fisier:
             wx.CallAfter(self.deschide, fisier)
         self._tasta_globala()
+        # la pornire, cursorul stă pe fila „În cuvinte”, nu pe lista de măsuri (cerut de Răzvan)
+        wx.CallAfter(self.carte.SetFocus)
         if actualizare.instalat() and fisier != '--autotest':
+            wx.CallLater(1500, self._anunta_versiunea_noua)
             wx.CallLater(1500, self.verifica_actualizari, False)
 
     # ---------------- interfață ----------------
@@ -338,7 +341,7 @@ class Fereastra(wx.Frame):
     def deschide(self, cale, pastreaza=True, titlu=None, dupa=None, brf=False, baza=None, folder=None, original=None,
                  fara_cuprins=False):
         """Deschide o partitură. pastreaza=False: nu se salvează nimic (pagini din aplicațiile editurilor);
-        titlu: numele afișat; dupa: funcție chemată la final (de exemplu ștergerea pozei); brf: salvează și BRF lângă fișier."""
+        titlu: numele afișat; dupa: funcție chemată la final (de exemplu ștergerea pozei); brf: salvează și BRF în Recunoscute\\<nume PDF>."""
         if self._ocupat_recunoastere:
             self.mesaj('Încă se recunoaște partitura de dinainte. Așteaptă să se termine.', 'Ocupat')
             if dupa:
@@ -370,7 +373,10 @@ class Fereastra(wx.Frame):
                 P.fara_salvare = not pastreaza
                 fis_brf = None
                 if brf:
-                    fis_brf = os.path.join(folder, baza + '.brf') if baza and folder else os.path.splitext(cale)[0] + '.brf'
+                    sursa = original or cale
+                    dir_brf = recunoastere.folder_rezultate(sursa)
+                    os.makedirs(dir_brf, exist_ok=True)
+                    fis_brf = os.path.join(dir_brf, recunoastere.nume_scurt(baza or os.path.splitext(os.path.basename(cale))[0], sursa) + '.brf')
                     txt = braille.din_scor(P.extrage(P.numere[0], P.numere[-1], list(range(len(P.portative)))))
                     with open(fis_brf, 'w', encoding='ascii', errors='replace', newline='') as f:
                         f.write(braille.la_brf(txt))
@@ -408,9 +414,10 @@ class Fereastra(wx.Frame):
         self.SetStatusText(f'Deschisă: {P.titlu}. {len(P.numere)} măsuri.')
         self.lista.SetFocus()
         if fis_brf:
-            self.mesaj(f'Gata. Fișierul Braille e salvat lângă PDF: {fis_brf}\n\n' +
+            self.mesaj(f'Gata. Fișierul Braille e salvat în folderul Recunoscute, la {os.path.basename(os.path.dirname(fis_brf))}, '
+                       f'cu numele {os.path.basename(fis_brf)}.\n\n' +
                        (f'Măsuri de verificat: {len(P.nesigure)} (' + ', '.join(str(n) for n in P.nesigure) + '). '
-                        'Lista lor cu motivele e în folderul Recunoscute, în fișierul „de verificat”.' if P.nesigure
+                        'Lista lor cu motivele e în același folder, în fișierul „de verificat”.' if P.nesigure
                         else 'Toate măsurile au fost citite la fel de ambele programe.'), 'Din PDF în Braille')
         elif recunoscuta:
             self.mesaj(P.descriere_generala(), 'Partitura e gata')
@@ -706,10 +713,24 @@ class Fereastra(wx.Frame):
         d.ShowModal()
         d.Destroy()
 
+    def _anunta_versiunea_noua(self):
+        """După o actualizare, la prima pornire, spune versiunea nouă."""
+        vechi = self.setari.get('versiune_vazuta')
+        if (vechi and vechi != VERSIUNE) or '--actualizat' in sys.argv:
+            self.SetStatusText(f'Regatul Partiturilor s-a actualizat la versiunea {VERSIUNE}.')
+            voce.spune('100 la sută. Actualizare terminată.')
+        if vechi != VERSIUNE:
+            self.setari['versiune_vazuta'] = VERSIUNE
+            scrie_setari(self.setari)
+
     def verifica_actualizari(self, manual=False):
         if not actualizare.instalat():
             if manual:
                 self.mesaj('Actualizarea automată merge doar la programul instalat cu RegatulPartiturilor-Setup.exe.', 'Actualizări')
+            return
+        if getattr(self, '_actualizare_in_curs', False):
+            if manual:
+                voce.spune('Actualizarea e deja în curs.')
             return
 
         def lucru():
@@ -719,21 +740,59 @@ class Fereastra(wx.Frame):
                     if manual:
                         wx.CallAfter(self.mesaj, f'Ai deja ultima versiune, {VERSIUNE}.', 'Actualizări')
                     return
-                wx.CallAfter(self.SetStatusText, f'Se descarcă versiunea nouă, {v}...')
-                cale = actualizare.descarca_setup(v)
+                self._actualizare_in_curs = True
+                voce.spune('Se actualizează.')
+                wx.CallAfter(self._arata_progres, v, 'Se actualizează.')
+                ultimul = [0]
+
+                # NVDA spune doar procentul total, din 10 în 10: descărcarea e prima jumătate (0–50),
+                # instalarea (spusă de programul de instalare) a doua (50–100).
+                def progres(descarcat, total):
+                    if total <= 0:
+                        return
+                    procent = min(50, descarcat * 50 // total)
+                    wx.CallAfter(self._progres, procent)
+                    zece = procent // 10 * 10
+                    if zece > ultimul[0]:
+                        ultimul[0] = zece
+                        voce.spune(f'{zece} la sută.')
+
+                cale = actualizare.descarca_setup(v, progres)
                 wx.CallAfter(self._instaleaza, v, cale)
             except Exception as ex:
-                if manual:
-                    wx.CallAfter(self.mesaj, f'Nu am putut verifica actualizările. Verifică internetul. ({ex})', 'Actualizări')
+                self._actualizare_in_curs = False
+                wx.CallAfter(self._inchide_progres)
+                if manual or getattr(self, '_dlg_progres', None) is not None:
+                    voce.spune('Actualizarea nu a reușit.')
+                    wx.CallAfter(self.mesaj, f'Nu am putut descărca actualizarea. Verifică internetul. ({ex})', 'Actualizări')
         threading.Thread(target=lucru, daemon=True).start()
 
+    def _arata_progres(self, v, text):
+        self._dlg_progres = DialogProgres(self, f'Actualizare la versiunea {v}', text)
+        self._dlg_progres.Show()
+        self.SetStatusText(text)
+
+    def _progres(self, procent):
+        text = f'Se actualizează: {procent} la sută.'
+        self.SetStatusText(text)
+        d = getattr(self, '_dlg_progres', None)
+        if d:
+            d.arata(procent, text)
+
+    def _inchide_progres(self):
+        d = getattr(self, '_dlg_progres', None)
+        self._dlg_progres = None
+        if d:
+            d.Destroy()
+
     def _instaleaza(self, v, cale):
-        wx.MessageBox(f'Am descărcat versiunea nouă, {v}. După ce apeși OK se instalează și programul se redeschide singur.',
-                      'Versiune nouă', wx.OK | wx.ICON_INFORMATION, self)
+        # fără întrebări: programul se închide, instalarea continuă procentele și îl redeschide
+        self._inchide_progres()
         try:
             actualizare.porneste_setup(cale)
             self.Close()
         except Exception as ex:
+            self._actualizare_in_curs = False
             self.mesaj(f'Nu am putut porni actualizarea: {ex}', 'Actualizări')
 
     def la_inchidere(self, e):
@@ -764,6 +823,23 @@ class DialogText(wx.Dialog):
         self.SetSizer(s)
         self.SetEscapeId(wx.ID_OK)
         t.SetFocus()
+
+
+class DialogProgres(wx.Dialog):
+    """Fereastră cu progresul actualizării: un text citibil și o bară de progres."""
+    def __init__(self, parinte, titlu, text):
+        super().__init__(parinte, title=titlu, size=(520, 200), style=wx.CAPTION | wx.STAY_ON_TOP)
+        s = wx.BoxSizer(wx.VERTICAL)
+        self.t = wx.TextCtrl(self, value=text, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_NO_VSCROLL, name='Progresul actualizării')
+        s.Add(self.t, 1, wx.EXPAND | wx.ALL, 8)
+        self.g = wx.Gauge(self, range=100, name='Progresul actualizării')
+        s.Add(self.g, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizer(s)
+        self.Centre()
+
+    def arata(self, procent, text):
+        self.g.SetValue(procent)
+        self.t.SetValue(text)
 
 
 class Picurare(wx.FileDropTarget):
@@ -805,11 +881,16 @@ def autotest(fisier, iesire):
         bucata = cuprins.pregateste_pdf(carte, 2, 3, os.path.join(d_pdf, 'bucata.pdf'), 0.3, None, dpi=50)
         rez.append(f'PDF pagini {cuprins.numar_pagini(carte)} -> {cuprins.numar_pagini(bucata)}; cuprins: '
                    + str(len(cuprins.gaseste(carte)['piese'])) + ' piese')
+        cuprins.incarca_sau_gaseste(carte)
+        rez.append('CUPRINS in Recunoscute: ' + str(os.path.isfile(os.path.join(d_pdf, 'Recunoscute', 'carte', 'cuprins.json'))))
+        from nucleu import verificare
+        rez.append('MAINI impartite in exemplu: ' + str(verificare.imparte_mainile(P.scor)))
         shutil.rmtree(d_pdf, ignore_errors=True)
         rez.append('COMPONENTE homr=' + str(recunoastere.gaseste_homr()) + ' audiveris=' + str(recunoastere.gaseste_audiveris())
                    + ' musescore=' + str(recunoastere.gaseste_musescore()))
         f.Destroy()
         app.Destroy()
+        rez.append('VOCE dll=' + str(bool(voce._incarca())) + ' nvda=' + str(voce.nvda_porneste()))
         rez.append('AUTOTEST OK')
     except Exception:
         rez.append('AUTOTEST EROARE\n' + traceback.format_exc())
