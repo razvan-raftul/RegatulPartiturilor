@@ -41,6 +41,21 @@ jobs:
           $c = "dist\RegatulPartiturilor\_internal\music21\corpus"
           if (Test-Path $c) { Get-ChildItem $c -Directory | Remove-Item -Recurse -Force }
           "{0:N0} MB" -f ((Get-ChildItem dist -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+      - name: NVDA Controller Client (NVDA spune progresul actualizării)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          try {
+            Invoke-WebRequest "https://download.nvaccess.org/releases/2024.4/nvda_2024.4_controllerClient.zip" -OutFile nvdacc.zip
+            Expand-Archive nvdacc.zip -DestinationPath nvdacc -Force
+            $toate = Get-ChildItem nvdacc -Recurse -Filter 'nvdaControllerClient*.dll'
+            $toate | ForEach-Object { Write-Host $_.FullName }
+            $x64 = $toate | Where-Object { $_.FullName -match '\\x64\\' -or $_.Name -match '64\.dll$' } | Select-Object -First 1
+            $x86 = $toate | Where-Object { $_.FullName -match '\\x86\\' -or $_.Name -match '32\.dll$' } | Select-Object -First 1
+            if ($x64) { Copy-Item $x64.FullName dist\RegatulPartiturilor\nvdaControllerClient.dll; Copy-Item $x64.FullName nvdaControllerClient.dll; Write-Host "x64: $($x64.FullName)" }
+            if ($x86) { Copy-Item $x86.FullName nvdaControllerClient32.dll; Write-Host "x86: $($x86.FullName)" }
+          } catch { Write-Host "Fara NVDA Controller Client: $_" }
+          exit 0
       - name: Executabil de proba (cu consola, ca sa se vada erorile)
         run: >
           pyinstaller --noconfirm --console --name RPTest --distpath testdist --workpath testbuild
@@ -54,6 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Continue'
+          if (Test-Path nvdaControllerClient.dll) { Copy-Item nvdaControllerClient.dll testdist\RPTest\ }
           $p = Start-Process "testdist\RPTest\RPTest.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest.txt' -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
           if (-not $p.WaitForExit(240000)) { Stop-Process -Id $p.Id -Force; Add-Content err.txt "TIMEOUT: programul nu s-a terminat in 4 minute" }
           $t = ''; if (Test-Path autotest.txt) { $t = Get-Content autotest.txt -Raw -Encoding utf8 }
