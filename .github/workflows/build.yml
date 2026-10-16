@@ -32,7 +32,7 @@ jobs:
         run: >
           pyinstaller --noconfirm --windowed --name RegatulPartiturilor --icon icon.ico
           --add-data "icon.ico;."
-          --collect-submodules music21 --collect-data music21
+          --collect-submodules music21 --collect-data music21 --collect-all pypdfium2 --collect-all pypdfium2_raw
           --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
           "Regatul Partiturilor.pyw"
       - name: Fără colecția de partituri din music21 (nu e folosită, ar mări mult programul)
@@ -45,7 +45,7 @@ jobs:
         run: >
           pyinstaller --noconfirm --console --name RPTest --distpath testdist --workpath testbuild
           --add-data "icon.ico;."
-          --collect-submodules music21 --collect-data music21
+          --collect-submodules music21 --collect-data music21 --collect-all pypdfium2 --collect-all pypdfium2_raw
           --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
           "Regatul Partiturilor.pyw"
       - name: Proba executabilului

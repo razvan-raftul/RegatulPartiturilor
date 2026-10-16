@@ -1,0 +1,110 @@
+name: componente
+# Pregătește programele ajutătoare care se instalează odată cu Regatul Partiturilor:
+# homr și Audiveris (recunosc partiturile din PDF și poze; programul le compară) și MuseScore (deschide fișierele .mscz).
+# Le despachetează din installerele oficiale, le încearcă împreună pe o partitură
+# și le pune ca arhive zip în release-ul „componente”. Rulează doar când se schimbă componente.txt sau la cerere.
+on:
+  push:
+    branches: [main]
+    paths: [componente.txt, homr_lansator.py, .github/workflows/componente.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  componente:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: homr, împachetat cu modelele lui
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $spec = ((Get-Content componente.txt | Where-Object { $_ -match '^\s*homr\s*=' }) -replace '^\s*homr\s*=\s*', '').Trim()
+          python -m pip install --upgrade pip
+          python -m pip install "$spec" pyinstaller
+          homr --init --no-title
+          pyinstaller --noconfirm --console --name homr --distpath C:\hd --workpath C:\hb --collect-all homr --collect-all onnxruntime --collect-all pypdfium2 --collect-all rapidocr homr_lansator.py
+          New-Item -ItemType Directory -Force C:\z | Out-Null
+          Move-Item C:\hd\homr C:\z\homr
+          Set-Content C:\z\homr\versiune.txt $spec
+          & C:\z\homr\homr.exe --help | Select-Object -First 3
+      - name: Descărcare și despachetare
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cfg = @{}
+          Get-Content componente.txt | Where-Object { $_ -match '^\s*(\w+)\s*=\s*(\S+)' } | ForEach-Object { $cfg[$Matches[1]] = $Matches[2] }
+          New-Item -ItemType Directory -Force C:\c, C:\x | Out-Null
+          foreach ($n in 'Audiveris', 'MuseScore') {
+            $url = $cfg[$n]
+            Write-Host "Descarc $n de la $url"
+            Invoke-WebRequest $url -OutFile "C:\c\$n.msi"
+            $p = Start-Process msiexec.exe -ArgumentList '/a', "C:\c\$n.msi", '/qn', "TARGETDIR=C:\x\$n" -Wait -PassThru
+            Write-Host "msiexec $n : $($p.ExitCode)"
+          }
+          $aud = Get-ChildItem C:\x\Audiveris -Recurse -Filter Audiveris.exe | Select-Object -First 1
+          $mus = Get-ChildItem C:\x\MuseScore -Recurse -Filter MuseScore4.exe | Select-Object -First 1
+          if (-not $aud) { throw "Nu am găsit Audiveris.exe" }
+          if (-not $mus) { throw "Nu am găsit MuseScore4.exe" }
+          # Audiveris: folderul cu exe-ul; MuseScore: folderul de deasupra lui bin
+          Move-Item $aud.DirectoryName C:\z\Audiveris
+          Move-Item $mus.Directory.Parent.FullName C:\z\MuseScore
+          Set-Content C:\z\Audiveris\versiune.txt $cfg['Audiveris']
+          # limbile pentru textul din partitură (Allegro, titluri): Audiveris le caută prin TESSDATA_PREFIX
+          New-Item -ItemType Directory -Force C:\z\Audiveris\tessdata | Out-Null
+          foreach ($l in 'eng', 'ita', 'deu', 'fra', 'ron') {
+            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$l.traineddata" -OutFile "C:\z\Audiveris\tessdata\$l.traineddata"
+          }
+          Set-Content C:\z\MuseScore\versiune.txt $cfg['MuseScore']
+          Get-ChildItem C:\z -Directory | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ((Get-ChildItem $_.FullName -Recurse | Measure-Object Length -Sum).Sum / 1MB) }
+      - name: Probă împreună (MuseScore face un PDF, Audiveris îl recunoaște)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $d = @()
+          New-Item -ItemType Directory -Force C:\t | Out-Null
+          $ms = Get-ChildItem C:\z\MuseScore -Recurse -Filter MuseScore4.exe | Select-Object -First 1
+          $p = Start-Process $ms.FullName -ArgumentList '-o', 'C:\t\proba.pdf', '"Exemple\Mozart - Sonata K545, expozitia.mxl"' -PassThru -RedirectStandardOutput C:\t\ms-out.txt -RedirectStandardError C:\t\ms-err.txt
+          if (-not $p.WaitForExit(300000)) { Stop-Process -Id $p.Id -Force; $d += 'MuseScore: TIMEOUT' }
+          $d += "MuseScore PDF: " + (Test-Path C:\t\proba.pdf)
+          $d += "MuseScore stderr: " + ((Get-Content C:\t\ms-err.txt -Raw) -replace '(?s)^(.{0,1500}).*', '$1')
+          $au = Get-ChildItem C:\z\Audiveris -Recurse -Filter Audiveris.exe | Select-Object -First 1
+          if (Test-Path C:\t\proba.pdf) {
+            $env:TESSDATA_PREFIX = 'C:\z\Audiveris\tessdata'
+            $p = Start-Process $au.FullName -ArgumentList '-batch', '-export', '-output', 'C:\t\out', '--', 'C:\t\proba.pdf' -PassThru -RedirectStandardOutput C:\t\au-out.txt -RedirectStandardError C:\t\au-err.txt
+            if (-not $p.WaitForExit(900000)) { Stop-Process -Id $p.Id -Force; $d += 'Audiveris: TIMEOUT' }
+            $mxl = Get-ChildItem C:\t\out -Recurse -Filter *.mxl -ErrorAction SilentlyContinue
+            $d += "Audiveris MXL: " + ($mxl.FullName -join ', ')
+            $d += "Audiveris OCR: " + ((Select-String -Path C:\t\au-out.txt, C:\t\au-err.txt -Pattern 'OCR' | Select-Object -First 3 | ForEach-Object { $_.Line }) -join ' | ')
+            $d += "Audiveris stdout (sfarsit): " + ((Get-Content C:\t\au-out.txt -Raw) -replace '(?s)^.*(.{1500})$', '$1')
+            $d += "Audiveris stderr (sfarsit): " + ((Get-Content C:\t\au-err.txt -Raw) -replace '(?s)^.*(.{1500})$', '$1')
+            New-Item -ItemType Directory -Force C:\t\h | Out-Null
+            Copy-Item C:\t\proba.pdf C:\t\h\proba.pdf
+            $p = Start-Process C:\z\homr\homr.exe -ArgumentList '--no-title', 'C:\t\h\proba.pdf' -PassThru -RedirectStandardOutput C:\t\h-out.txt -RedirectStandardError C:\t\h-err.txt
+            if (-not $p.WaitForExit(900000)) { Stop-Process -Id $p.Id -Force; $d += 'homr: TIMEOUT' }
+            $hx = Get-ChildItem C:\t\h -Filter *.musicxml -ErrorAction SilentlyContinue
+            $d += "homr MusicXML: " + ($hx.FullName -join ', ')
+            $d += "homr stderr (sfarsit): " + ((Get-Content C:\t\h-err.txt -Raw) -replace '(?s)^.*(.{1500})$', '$1')
+            if ($mxl -and $hx) {
+              python -m pip install -q music21
+              $d += (python proba_recunoastere.py "Exemple\Mozart - Sonata K545, expozitia.mxl" $hx[0].FullName $mxl[0].FullName 2>&1 | Out-String)
+            }
+          }
+          Set-Content C:\t\diagnostic-componente.txt ($d -join "`n`n") -Encoding utf8
+          Write-Host ($d -join "`n`n")
+      - name: Arhive și publicare
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Compress-Archive -Path C:\z\Audiveris\* -DestinationPath C:\t\Audiveris.zip -CompressionLevel Optimal
+          Compress-Archive -Path C:\z\MuseScore\* -DestinationPath C:\t\MuseScore.zip -CompressionLevel Optimal
+          Compress-Archive -Path C:\z\homr\* -DestinationPath C:\t\homr.zip -CompressionLevel Optimal
+          Get-ChildItem C:\t\*.zip | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ($_.Length / 1MB) }
+          gh release delete componente --yes --cleanup-tag 2>$null
+          gh release create componente C:\t\Audiveris.zip C:\t\MuseScore.zip C:\t\homr.zip C:\t\diagnostic-componente.txt componente.txt --prerelease --title "Componente" --notes "homr, Audiveris si MuseScore, despachetate, pentru programul de instalare."
+          if (-not (Select-String -Path C:\t\diagnostic-componente.txt -Pattern 'PROBA OK' -Quiet)) { Write-Host "Proba impreuna nu a trecut (arhivele sunt totusi publicate)"; exit 1 }
