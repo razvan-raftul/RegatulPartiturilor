@@ -17,6 +17,147 @@ import numpy as np
 DPI = 150
 
 
+# ---------------------------------------------------------------- pagini culcate (scanate pe lat)
+# Unele culegeri sunt scanate cu pagina culcată (portativele merg de sus în jos). Le găsim după liniile lungi:
+# la o pagină dreaptă liniile portativului sunt orizontale, la una culcată sunt verticale. Sensul (90 sau 270 de grade)
+# îl hotărâm pe toată cartea deodată, după cheie și armură, care stau la începutul fiecărui rând.
+
+
+def _linii_lungi(neg, frac=0.25) -> int:
+    """Câte linii orizontale subțiri și lungi are imaginea (liniile portativelor). Marginile negre ale scanării,
+    groase, nu se numără. Găurile mici și înclinarea ușoară sunt iertate."""
+    h, w = neg.shape
+    d = neg.copy()
+    d[1:] |= neg[:-1]
+    d[:-1] |= neg[1:]
+    bune = []
+    for y in np.where(d.sum(axis=1) >= frac * w)[0]:
+        idx = np.where(d[y])[0]
+        rupturi = np.where(np.diff(idx) > 3)[0]
+        inceputuri = np.concatenate([[idx[0]], idx[rupturi + 1]])
+        sfarsituri = np.concatenate([idx[rupturi], [idx[-1]]])
+        if (sfarsituri - inceputuri).max() >= frac * w:
+            bune.append(y)
+    # rândurile vecine fac o singură linie; liniile groase (margini de scanare) nu contează
+    linii, grup = 0, []
+    for y in bune + [None]:
+        if y is not None and grup and y - grup[-1] <= 1:
+            grup.append(y)
+            continue
+        if grup and len(grup) <= 5:
+            linii += 1
+        grup = [y] if y is not None else []
+    return linii
+
+
+def _linii_cu_inclinare(neg) -> int:
+    """Cele mai multe linii găsite încercând și ușor înclinat (scanări strâmbe)."""
+    from PIL import Image
+    best = _linii_lungi(neg)
+    poza = Image.fromarray(neg.astype(np.uint8) * 255)
+    for unghi in (-3, -1.5, 1.5, 3):
+        best = max(best, _linii_lungi(np.asarray(poza.rotate(unghi, resample=Image.NEAREST, fillcolor=0)) > 127))
+    return best
+
+
+def _stanga_fata_de_dreapta(neg) -> float:
+    """Cerneala de la începutul rândurilor (cheia, armura) față de cea de la sfârșit, pe benzile portativelor."""
+    h, w = neg.shape
+    randuri = [y for y in range(h) if neg[y].sum() > 0.25 * w]
+    if len(randuri) < 5:
+        return 1.0
+    x0 = int(np.median([np.where(neg[y])[0][0] for y in randuri]))
+    x1 = int(np.median([np.where(neg[y])[0][-1] for y in randuri]))
+    L = x1 - x0
+    if L < 40:
+        return 1.0
+    masca = np.zeros(h, bool)
+    for y in randuri:
+        masca[max(0, y - 6):y + 7] = True
+    b = neg[masca]
+    lat = max(5, int(0.08 * L))
+    return (b[:, x0 + 2:x0 + lat].sum() + 1) / (b[:, x1 - lat:x1 - 2].sum() + 1)
+
+
+def _pagina_culcata(img):
+    """(culcată?, dovada pentru 90 de grade față de 270), pentru o imagine mică a paginii."""
+    from PIL import Image
+    g = np.asarray(img.convert('L'))
+    h, w = g.shape
+    neg = (g < 170)[int(.05 * h):int(.95 * h), int(.05 * w):int(.95 * w)]
+    orizontale, verticale = _linii_lungi(neg), _linii_lungi(neg.T)
+    if orizontale < 5 and verticale < 8:          # poate e strâmbă: mai încercăm puțin înclinat
+        orizontale, verticale = _linii_cu_inclinare(neg), _linii_cu_inclinare(neg.T)
+    if not (verticale >= 5 and verticale > 2 * max(orizontale, 1)):
+        return False, 0.0
+    poza = Image.fromarray(neg.astype(np.uint8) * 255)
+    r90 = _stanga_fata_de_dreapta(np.asarray(poza.rotate(-90, expand=True)) > 127)
+    r270 = _stanga_fata_de_dreapta(np.asarray(poza.rotate(-270, expand=True)) > 127)
+    return True, float(np.log(r90) - np.log(r270))
+
+
+_ROTATII = {}
+
+
+def _cale_orientare(cale_pdf: str) -> str:
+    return os.path.join(os.path.dirname(cale_cuprins(cale_pdf)), 'orientare.json')
+
+
+def rotatii(cale_pdf: str) -> list:
+    """Pentru fiecare pagină: cu câte grade (în sensul acelor de ceasornic) trebuie întoarsă ca să fie dreaptă."""
+    try:
+        cheie = (os.path.abspath(cale_pdf), os.path.getmtime(cale_pdf))
+    except OSError:
+        return []
+    if cheie in _ROTATII:
+        return _ROTATII[cheie]
+    fis = _cale_orientare(cale_pdf)
+    try:
+        with open(fis, encoding='utf-8') as f:
+            d = json.load(f)
+        if d.get('mtime') == cheie[1]:
+            _ROTATII[cheie] = d['rotatii']
+            return d['rotatii']
+    except (OSError, ValueError, KeyError):
+        pass
+    n = numar_pagini(cale_pdf)
+    rez = [0] * n
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        _ROTATII[cheie] = rez
+        return rez
+    pdf = pdfium.PdfDocument(cale_pdf)
+    try:
+        def analiza(i):
+            return _pagina_culcata(pdf[i].render(scale=80 / 72.0, grayscale=True).to_pil())
+        # întâi câteva pagini de probă; dacă niciuna nu e culcată, cartea e dreaptă
+        proba = sorted(set(np.linspace(0, n - 1, min(n, 12)).astype(int).tolist())) if n else []
+        rezultate = {i: analiza(i) for i in proba}
+        if any(c for c, _ in rezultate.values()):
+            for i in range(n):
+                if i not in rezultate:
+                    rezultate[i] = analiza(i)
+            dovada = sum(v for c, v in rezultate.values() if c)
+            sens = 90 if dovada >= 0 else 270
+            rez = [sens if rezultate[i][0] else 0 for i in range(n)]
+    finally:
+        pdf.close()
+    _ROTATII[cheie] = rez
+    if any(rez):
+        try:
+            os.makedirs(os.path.dirname(fis), exist_ok=True)
+            with open(fis, 'w', encoding='utf-8') as f:
+                json.dump({'mtime': cheie[1], 'rotatii': rez}, f)
+        except OSError:
+            pass
+    return rez
+
+
+def _intoarce(img_pil, grade):
+    return img_pil.rotate(-grade, expand=True, fillcolor=255) if grade else img_pil
+
+
 # ---------------------------------------------------------------- pagini ca imagini
 
 
@@ -43,11 +184,12 @@ def pagini_gri(cale_pdf: str, dpi=DPI):
     except ImportError:
         pdfium = None
     if pdfium is not None:
+        rot = rotatii(cale_pdf)
         pdf = pdfium.PdfDocument(cale_pdf)
         try:
             for i in range(len(pdf)):
                 img = pdf[i].render(scale=dpi / 72.0, grayscale=True).to_pil().convert('L')
-                yield i + 1, np.asarray(img)
+                yield i + 1, np.asarray(_intoarce(img, rot[i] if i < len(rot) else 0))
         finally:
             pdf.close()
         return
@@ -70,6 +212,11 @@ def extrage_pagini(cale_pdf: str, prima: int, ultima: int, dest: str):
         nou = pdfium.PdfDocument.new()
         try:
             nou.import_pages(src, list(range(prima - 1, ultima)))
+            rot = rotatii(cale_pdf)
+            for k, i in enumerate(range(prima - 1, ultima)):     # paginile culcate se îndreaptă
+                if i < len(rot) and rot[i]:
+                    pg = nou[k]
+                    pg.set_rotation((pg.get_rotation() + rot[i]) % 360)
             nou.save(dest)
         finally:
             nou.close()
@@ -494,10 +641,12 @@ def _pagini_alese(cale_pdf, de_la, pana_la, dpi):
     except ImportError:
         pdfium = None
     if pdfium is not None:
+        rot = rotatii(cale_pdf)
         pdf = pdfium.PdfDocument(cale_pdf)
         try:
             for i in range(de_la - 1, pana_la):
-                yield i + 1, np.asarray(pdf[i].render(scale=dpi / 72.0, grayscale=True).to_pil().convert('L'))
+                img = pdf[i].render(scale=dpi / 72.0, grayscale=True).to_pil().convert('L')
+                yield i + 1, np.asarray(_intoarce(img, rot[i] if i < len(rot) else 0))
         finally:
             pdf.close()
         return
