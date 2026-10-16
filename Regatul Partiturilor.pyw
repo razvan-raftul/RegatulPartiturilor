@@ -484,7 +484,7 @@ class Fereastra(wx.Frame):
 
         def lucru():
             try:
-                txt = braille.din_scor(self.P.extrage(*s))
+                txt = braille.din_scor(self.P.extrage(*s), final=s[1] == self.P.numere[-1])
             except Exception as ex:
                 traceback.print_exc()
                 txt = f'Nu am putut face Braille pentru selecția aceasta. Eroare: {ex}'
@@ -714,7 +714,7 @@ class Fereastra(wx.Frame):
         s = self.selectie() or (self.P.numere[0], self.P.numere[-1], list(range(len(self.P.portative))))
         wait = wx.BusyInfo('Se pregătește Braille...', self)
         try:
-            txt = braille.din_scor(self.P.extrage(*s))
+            txt = braille.din_scor(self.P.extrage(*s), final=s[1] == self.P.numere[-1])
         finally:
             del wait
         if brf:
@@ -897,7 +897,7 @@ def autotest(fisier, iesire):
         rez.append('VERSIUNE ' + VERSIUNE)
         rez.append(P.descriere_generala())
         rez.append(P.descrie(P.numere[0], P.numere[0] + 1, list(range(len(P.portative))), cuvinte.Optiuni()))
-        rez.append(braille.din_scor(P.extrage(P.numere[0], P.numere[0] + 3, list(range(len(P.portative))))))
+        rez.append(braille.din_scor(P.extrage(P.numere[0], P.numere[0] + 3, list(range(len(P.portative)))), final=False))
         app = wx.App(False)
         f = Fereastra()
         f._deschisa(P, None)
@@ -934,6 +934,9 @@ def autotest(fisier, iesire):
         from nucleu import verificare
         rez.append('MAINI impartite in exemplu: ' + str(verificare.imparte_mainile(P.scor)))
         shutil.rmtree(d_pdf, ignore_errors=True)
+        # regulile de braille din manual: titlu fără etichete englezești, bara finală
+        tb = braille.la_brf(braille.din_scor(P.scor))
+        rez.append('BRAILLE REGULI bara finala=' + str(tb.rstrip().endswith('<K')) + ' fara Composer=' + str('COMPOSER' not in tb))
         rez.append('COMPONENTE homr=' + str(recunoastere.gaseste_homr()) + ' audiveris=' + str(recunoastere.gaseste_audiveris())
                    + ' musescore=' + str(recunoastere.gaseste_musescore()))
         f.Destroy()
