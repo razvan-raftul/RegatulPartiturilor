@@ -49,7 +49,7 @@ Control plus Shift plus U: măsura de verificat anterioară.
 Redare cu sunet (se cântă măsurile și portativele alese):
 F5: redă selecția. Shift plus F5: redă de la măsura aleasă până la final.
 F6: pauză sau continuă. F7: oprește.
-Control plus minus: mai încet. Control plus plus (egal): mai repede. Control plus 0: tempoul scris.
+Control plus minus: mai rar cu 5 la sută. Control plus egal (sau plus): mai repede cu 5 la sută. Control plus 0: tempoul scris. Dacă piesa se cântă, se schimbă pe loc.
 Control plus R: redare în buclă, pornită sau oprită.
 
 Citește din fereastră (pentru aplicațiile editurilor, din care nu se poate descărca):
@@ -100,6 +100,7 @@ class Fereastra(wx.Frame):
         self.SetStatusText('Deschide o partitură cu Control plus O.')
         self.SetDropTarget(Picurare(self))
         self.Bind(wx.EVT_CLOSE, self.la_inchidere)
+        self.Bind(wx.EVT_CHAR_HOOK, self._taste_tempo)
         self.Centre()
         try:
             baza = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -148,9 +149,10 @@ class Fereastra(wx.Frame):
         self._m(r, 'Pauză sau continuă\tF6', self.pauza)
         self._m(r, 'Oprește\tF7', self.opreste)
         r.AppendSeparator()
-        self._m(r, 'Mai încet\tCtrl+-', lambda e: self.schimba_tempo(-10))
-        self._m(r, 'Mai repede\tCtrl+=', lambda e: self.schimba_tempo(10))
-        self._m(r, 'Tempoul scris\tCtrl+0', lambda e: self.schimba_tempo(0))
+        # scurtăturile pentru tempo se prind direct din tastatură (vezi _taste_tempo): în meniu doar se afișează
+        self._m(r, 'Mai rar cu 5 la sută (Control minus)', lambda e: self.schimba_tempo(-5))
+        self._m(r, 'Mai repede cu 5 la sută (Control egal sau Control plus)', lambda e: self.schimba_tempo(5))
+        self._m(r, 'Tempoul scris (Control 0)', lambda e: self.schimba_tempo(0))
         self.m_bucla = r.AppendCheckItem(wx.ID_ANY, 'Redare în buclă\tCtrl+R')
         self.Bind(wx.EVT_MENU, self.comuta_bucla, self.m_bucla)
         mb.Append(r, '&Redare')
@@ -592,10 +594,31 @@ class Fereastra(wx.Frame):
         self.SetStatusText('Oprit.')
 
     def schimba_tempo(self, pas):
+        vechi = self.procent
         self.procent = 100 if pas == 0 else min(200, max(20, self.procent + pas))
         self.setari['tempo'] = self.procent
         scrie_setari(self.setari)
-        self.SetStatusText(f'Tempo: {self.procent} la sută din cel scris. Se aplică la următoarea redare (F5).')
+        if pas and self.procent == vechi:
+            text = 'Tempoul e deja cel mai ' + ('rar' if pas < 0 else 'repede') + f', {self.procent} la sută.'
+        else:
+            text = f'Tempo {self.procent} la sută.'
+        self.SetStatusText(text)
+        voce.spune(text, intrerupe=True)
+        # dacă se cântă, se reia imediat cu tempoul nou
+        if self.redare.stare in ('canta', 'pauza') and self.P:
+            self.reda(False)
+
+    def _taste_tempo(self, e):
+        """Control minus / Control egal (sau plus) / Control 0, de pe tastatura principală sau numerică."""
+        k = e.GetKeyCode()
+        if e.ControlDown() and not e.AltDown():
+            if k in (ord('-'), wx.WXK_SUBTRACT, wx.WXK_NUMPAD_SUBTRACT, 189):
+                self.schimba_tempo(-5); return
+            if k in (ord('='), ord('+'), wx.WXK_ADD, wx.WXK_NUMPAD_ADD, 187):
+                self.schimba_tempo(5); return
+            if k in (ord('0'), wx.WXK_NUMPAD0):
+                self.schimba_tempo(0); return
+        e.Skip()
 
     def comuta_bucla(self, e=None):
         self.redare.bucla = self.m_bucla.IsChecked()
