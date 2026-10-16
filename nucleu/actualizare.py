@@ -41,13 +41,27 @@ def versiune_noua():
     return None
 
 
-def descarca_setup(versiune) -> str:
+def descarca_setup(versiune, progres=None) -> str:
+    """Descarcă programul de instalare. progres(descarcat, total) se cheamă pe parcurs (total poate fi 0 dacă nu se știe)."""
     cale = os.path.join(tempfile.gettempdir(), f'RegatulPartiturilor-Setup-{versiune}.exe')
-    date = _citeste(BAZA + SETUP, timeout=300)
-    if len(date) < 1_000_000:
-        raise IOError('Fișierul descărcat e prea mic.')
-    with open(cale, 'wb') as f:
-        f.write(date)
+    req = urllib.request.Request(BAZA + SETUP, headers={'User-Agent': 'RegatulPartiturilor'})
+    descarcat = 0
+    with urllib.request.urlopen(req, timeout=60) as r, open(cale + '.part', 'wb') as f:
+        total = int(r.headers.get('Content-Length') or 0)
+        if progres:
+            progres(0, total)
+        while True:
+            bucata = r.read(256 * 1024)
+            if not bucata:
+                break
+            f.write(bucata)
+            descarcat += len(bucata)
+            if progres:
+                progres(descarcat, total)
+    if descarcat < 1_000_000 or (total and descarcat != total):
+        os.remove(cale + '.part')
+        raise IOError('Descărcarea nu s-a terminat întreagă.')
+    os.replace(cale + '.part', cale)
     return cale
 
 

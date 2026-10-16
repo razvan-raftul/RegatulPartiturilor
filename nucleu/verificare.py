@@ -226,7 +226,34 @@ def combina(scoruri: dict) -> Rezultat:
         nr += 1
     for alt in nume[1:]:
         _imbogateste(rezultat, copii, alt, scoruri[alt])
+        _dubli_diezi(copii, alt)
     return Rezultat(rezultat, sigure, nesigure, nume)
+
+
+def _dubli_diezi(copii, alt):
+    """homr nu citește dublii diezi și dublii bemoli (fa dublu diez iese fa). Unde celălalt program are, pe aceeași
+    treaptă, în același loc și cu aceeași durată, un dublu diez sau dublu bemol, îl luăm de la el."""
+    from music21 import pitch as m21pitch
+    for poz, M_ales, cop in copii:
+        Ma = poz.get(alt)
+        if Ma is None or Ma is M_ales:
+            continue
+        duble = {}
+        for m in Ma.portative:
+            if m is None:
+                continue
+            for n in m.recurse().notes:
+                for p in n.pitches:
+                    if p.accidental is not None and abs(p.accidental.alter) == 2:
+                        duble[(_fr(n.getOffsetInHierarchy(m)), p.step, p.octave, _fr(n.duration.quarterLength))] = p.accidental.alter
+        if not duble:
+            continue
+        for m in cop:
+            for n in m.recurse().notes:
+                for p in n.pitches:
+                    k = (_fr(n.getOffsetInHierarchy(m)), p.step, p.octave, _fr(n.duration.quarterLength))
+                    if k in duble and (p.accidental is None or abs(p.accidental.alter) != 2):
+                        p.accidental = m21pitch.Accidental(duble[k])
 
 
 # ---------------------------------------------------------------- semnele din jurul notelor
@@ -299,6 +326,11 @@ def _numar(M, i):
     return i + 1
 
 
+def _toate(M) -> tuple:
+    """Toate notele măsurii verticale, de pe toate portativele, într-o singură listă."""
+    return tuple(sorted(e for ev in M.ev for e in ev))
+
+
 def _alege(var: dict, ordine: list):
     """Alege varianta unei măsuri. Întoarce (programul ales, motiv de nesiguranță sau None)."""
     prezente = [n for n in ordine if n in var]
@@ -310,10 +342,11 @@ def _alege(var: dict, ordine: list):
             return prezente[0], 'a citit-o doar ' + prezente[0]
         return prezente[0], None
     # grupuri de programe care au citit identic
+    # aceleași note, chiar dacă un program le-a pus pe alt portativ (mâinile pe același portativ), înseamnă „la fel”
     grupuri = []
     for n in prezente:
         for g in grupuri:
-            if var[g[0]].ev == var[n].ev:
+            if var[g[0]].ev == var[n].ev or _toate(var[g[0]]) == _toate(var[n]):
                 g.append(n); break
         else:
             grupuri.append([n])
@@ -383,4 +416,149 @@ def uneste_pagini(scoruri: list):
                 m2.number = nr + j + 1
                 p.append(m2)
         nr += nou
+    return rez
+
+
+# ---------------------------------------------------------------- mâinile pe același portativ
+# La pian, uneori ambele mâini sunt scrise pe un singur portativ (de exemplu Cramer, Studiul 13: mâna stângă
+# urcă pe portativul de sus, iar cel de jos rămâne gol). Programele de recunoaștere pun atunci toate notele
+# la mâna de pe portativul acela. Le despărțim: din fiecare acord, nota de sus merge la mâna dreaptă,
+# celelalte la mâna stângă.
+
+def _are_note(m) -> bool:
+    return m is not None and any(not n.duration.isGrace for n in m.recurse().notes)
+
+
+def _goleste(m):
+    for el in list(m.recurse().getElementsByClass((note.GeneralNote, stream.Voice))):
+        try:
+            el.activeSite.remove(el)
+        except Exception:
+            pass
+
+
+def _tacere(m, L):
+    """Intervalele (început, sfârșit) din măsură în care portativul nu are nicio notă care sună."""
+    ocupat = []
+    if m is not None:
+        for n in m.recurse().notes:
+            if n.duration.isGrace:
+                continue
+            a = _fr(n.getOffsetInHierarchy(m))
+            ocupat.append((a, a + _fr(n.duration.quarterLength)))
+    ocupat.sort()
+    libere, t = [], Fraction(0)
+    for a, b in ocupat:
+        if a > t:
+            libere.append((t, a))
+        t = max(t, b)
+    if t < L:
+        libere.append((t, L))
+    return libere
+
+
+def _in(off, d, libere):
+    return any(a <= off and off + d <= b for a, b in libere)
+
+
+def _voci_care_suna(m):
+    """Funcție: câte obiecte-notă diferite (din voci diferite) sună la un moment dat în măsură."""
+    el = []
+    for n in m.recurse().notes:
+        if n.duration.isGrace:
+            continue
+        a = _fr(n.getOffsetInHierarchy(m))
+        el.append((a, a + _fr(n.duration.quarterLength)))
+    return lambda o: sum(1 for a, b in el if a <= o < b)
+
+
+def _verticale(m):
+    v = m.chordify()
+    return [(_fr(e.getOffsetInHierarchy(v)), e) for e in v.recurse().notesAndRests]
+
+
+def imparte_mainile(scor) -> list:
+    """Unde un portativ al pianului tace cel puțin o jumătate de măsură, iar celălalt are acolo acorduri aproape
+    peste tot, împarte notele între mâini (nota de sus la dreapta, restul la stânga).
+    Întoarce numerele măsurilor schimbate."""
+    parti = list(scor.parts)
+    if len(parti) != 2:
+        return []
+    sus, jos = (masuri_portativ(p) for p in parti)
+    schimbate = []
+    for i in range(min(len(sus), len(jos))):
+        ms, mj = sus[i], jos[i]
+        L = _lungime_masura(ms) or _fr(ms.duration.quarterLength)
+        facut = False
+        for src, alt, sursa_sus in ((ms, mj, True), (mj, ms, False)):
+            if facut or not _are_note(src):
+                continue
+            libere = _tacere(alt, L)
+            # mâna stângă urcă sus: ajunge ca portativul de jos să tacă o jumătate de măsură;
+            # mâna dreaptă coboară jos: doar dacă portativul de sus tace toată măsura
+            # (altfel sunt de obicei două voci ale mâinii stângi)
+            if sum(b - a for a, b in libere) < (L / 2 if sursa_sus else L):
+                continue
+            try:
+                vs, va = _verticale(src), _verticale(alt)
+            except Exception:
+                continue
+            in_liniste = [(o, e) for o, e in vs if not e.isRest and _in(o, _fr(e.duration.quarterLength), libere)]
+            # doar sunetele din voci diferite (codițe în sus și în jos) pot fi ale celeilalte mâini;
+            # un acord scris cu o singură codiță (de exemplu octavele mâinii drepte) rămâne la mâna lui
+            voci = _voci_care_suna(src)
+            duble = sum(1 for o, e in in_liniste if len(e.pitches) >= 2 and voci(o) >= 2)
+            if not in_liniste or duble / len(in_liniste) < 0.6:
+                continue
+            noi_src, noi_alt = [], []
+            for o, e in vs:
+                d = e.duration.quarterLength
+                if e.isRest or len(e.pitches) < 2 or not _in(o, _fr(d), libere):
+                    noi_src.append((o, copy.deepcopy(e)))
+                    continue
+                p = sorted(e.pitches, key=lambda x: x.ps)
+                pastrat, mutat = ([p[-1]], p[:-1]) if sursa_sus else (p[:-1], [p[-1]])
+                for lst, ps in ((noi_src, pastrat), (noi_alt, mutat)):
+                    n = note.Note(ps[0], quarterLength=d) if len(ps) == 1 else chord.Chord(ps, quarterLength=d)
+                    n.tie = copy.deepcopy(e.tie)
+                    lst.append((o, n))
+            # pe portativul celălalt: ce era deja (în afara liniștii) plus notele mutate, iar pauze în rest
+            for o, e in va:
+                d = _fr(e.duration.quarterLength)
+                if not e.isRest:
+                    noi_alt.append((o, copy.deepcopy(e)))
+            noi_alt.sort(key=lambda x: x[0])
+            completat, t = [], Fraction(0)
+            for o, e in noi_alt:
+                if o > t:
+                    completat.append((t, note.Rest(quarterLength=float(o - t))))
+                completat.append((o, e))
+                t = max(t, o + _fr(e.duration.quarterLength))
+            if t < L:
+                completat.append((t, note.Rest(quarterLength=float(L - t))))
+            _goleste(src)
+            _goleste(alt)
+            for m, lista in ((src, noi_src), (alt, completat)):
+                for off, el in _uneste_pauze(lista):
+                    m.insert(float(off), el)
+            schimbate.append(ms.number if ms.number is not None else i + 1)
+            facut = True
+    return schimbate
+
+
+def _uneste_pauze(lista):
+    """Pauzele vecine se unesc într-una singură (dacă dau o durată obișnuită)."""
+    from music21 import duration as dur
+    rez = []
+    for off, el in lista:
+        if el.isRest and rez and rez[-1][1].isRest:
+            q = rez[-1][1].quarterLength + el.quarterLength
+            try:
+                d = dur.Duration(q)
+                if d.type not in ('complex', 'inexpressible'):
+                    rez[-1] = (rez[-1][0], note.Rest(quarterLength=q))
+                    continue
+            except Exception:
+                pass
+        rez.append((off, el))
     return rez

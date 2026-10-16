@@ -4,7 +4,7 @@ Cum recunoaște începutul unei piese, la orice carte tipărită obișnuit:
 - primul rând (sistem) al unei piese e retras spre dreapta față de celelalte rânduri, ca să încapă numărul sau titlul;
 - piesa dinainte se termină cu bara dublă de final (o linie subțire și una groasă).
 O piesă e „sigură” când are amândouă semnele. Dacă are doar unul, e marcată „nesigur” și programul spune unde să verifici,
-în loc să ghicească. Cuprinsul găsit se salvează lângă PDF (<nume>.cuprins.json) și se folosește direct data viitoare;
+în loc să ghicească. Cuprinsul găsit se salvează în Recunoscute\\<nume PDF>\\cuprins.json și se folosește direct data viitoare;
 un cuprins verificat de om (verificat: true) are întâietate.
 """
 import json
@@ -418,11 +418,29 @@ def gaseste(cale_pdf: str, progres=None) -> dict:
 
 
 def cale_cuprins(cale_pdf: str) -> str:
+    """Cuprinsul stă în Recunoscute\\<numele PDF-ului>\\cuprins.json."""
+    d = os.path.dirname(os.path.abspath(cale_pdf))
+    return os.path.join(d, 'Recunoscute', os.path.splitext(os.path.basename(cale_pdf))[0], 'cuprins.json')
+
+
+def _cale_veche(cale_pdf: str) -> str:
     return os.path.splitext(cale_pdf)[0] + '.cuprins.json'
 
 
 def incarca_sau_gaseste(cale_pdf: str, progres=None) -> dict:
     c = cale_cuprins(cale_pdf)
+    if not os.path.isfile(c) and os.path.isfile(_cale_veche(cale_pdf)):
+        # cuprins din versiunile vechi (lângă PDF): îl copiem la locul nou; pe cel vechi îl poți șterge
+        try:
+            os.makedirs(os.path.dirname(c), exist_ok=True)
+            with open(_cale_veche(cale_pdf), encoding='utf-8') as f:
+                d = json.load(f)
+            d['fisier'] = os.path.basename(cale_pdf)
+            with open(c, 'w', encoding='utf-8') as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            os.utime(c, (os.path.getmtime(_cale_veche(cale_pdf)),) * 2)
+        except (OSError, ValueError):
+            pass
     if os.path.isfile(c):
         try:
             with open(c, encoding='utf-8') as f:
@@ -435,6 +453,7 @@ def incarca_sau_gaseste(cale_pdf: str, progres=None) -> dict:
             pass
     d = gaseste(cale_pdf, progres)
     try:
+        os.makedirs(os.path.dirname(c), exist_ok=True)
         with open(c, 'w', encoding='utf-8') as f:
             json.dump(d, f, ensure_ascii=False, indent=1)
     except OSError:

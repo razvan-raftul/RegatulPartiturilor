@@ -103,6 +103,19 @@ def gaseste_homr():
     return _din_componente('homr', 'homr.exe') or shutil.which('homr')
 
 
+def folder_rezultate(cale_sursa: str) -> str:
+    """Tot ce face programul pentru un PDF (cuprins, piese recunoscute, Braille) stă în
+    Recunoscute\\<numele PDF-ului>, lângă PDF, ca folderul cu PDF-uri să rămână curat."""
+    d = os.path.dirname(os.path.abspath(cale_sursa))
+    return os.path.join(d, 'Recunoscute', os.path.splitext(os.path.basename(cale_sursa))[0])
+
+
+def nume_scurt(baza: str, cale_sursa: str) -> str:
+    """În folderul cărții, piesele se numesc scurt („Studiul 13”), fără numele cărții în față."""
+    carte = os.path.splitext(os.path.basename(cale_sursa))[0]
+    return baza[len(carte) + 3:] if baza.startswith(carte + ' - ') and len(baza) > len(carte) + 3 else baza
+
+
 @dataclass
 class Recunoastere:
     scor: object                       # partitura finală (music21)
@@ -147,9 +160,21 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
     # baza/folder: când recunoaștem doar o piesă dintr-o carte, `cale` e un PDF temporar cu paginile ei,
     # iar rezultatul se salvează lângă carte, cu numele piesei
     baza = baza or os.path.splitext(os.path.basename(cale))[0]
-    dest = os.path.join(folder or os.path.dirname(os.path.abspath(cale)), 'Recunoscute')
-    final = os.path.join(dest, baza + ' - verificat.musicxml')
-    raport = os.path.join(dest, baza + ' - de verificat.txt')
+    sursa = original or cale
+    dest = folder_rezultate(sursa)
+    scurt = nume_scurt(baza, sursa)
+    final = os.path.join(dest, scurt + ' - verificat.musicxml')
+    raport = os.path.join(dest, scurt + ' - de verificat.txt')
+    # locul vechi (versiunile de dinainte de 16 oct. 2026): direct în Recunoscute, cu numele întreg
+    vechi = os.path.join(folder or os.path.dirname(os.path.abspath(sursa)), 'Recunoscute')
+    if pastreaza and not os.path.isfile(final) and os.path.isfile(os.path.join(vechi, baza + ' - verificat.musicxml')):
+        try:
+            os.makedirs(dest, exist_ok=True)
+            shutil.copy2(os.path.join(vechi, baza + ' - verificat.musicxml'), final)
+            if os.path.isfile(os.path.join(vechi, baza + ' - de verificat.txt')):
+                shutil.copy2(os.path.join(vechi, baza + ' - de verificat.txt'), raport)
+        except OSError:
+            pass
     # recunoscută deja și PDF-ul nu s-a schimbat: nu mai așteptăm minute întregi
     if pastreaza and os.path.isfile(final) and os.path.getmtime(final) >= os.path.getmtime(original or cale):
         try:
@@ -190,6 +215,15 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
         rez = verificare.combina(ordine)
         _metadate(rez.scor, baza)
         nes = dict(rez.nesigure)
+        # mâna stângă scrisă pe portativul de sus (sau dreapta pe cel de jos): o despărțim de cealaltă mână
+        mutate = verificare.imparte_mainile(rez.scor)
+        for nr in mutate:
+            motiv = ('ambele mâini erau scrise pe același portativ; am dat mâinii drepte nota de sus '
+                     'și mâinii stângi pe cea de jos')
+            nes[nr] = (nes[nr] + '; ' + motiv) if nr in nes else motiv
+        if mutate:
+            rez.sigure = max(0, rez.sigure - sum(1 for nr in mutate if nr not in dict(rez.nesigure)))
+        nes = dict(sorted(nes.items()))
         fis = ''
         if pastreaza:
             os.makedirs(dest, exist_ok=True)
