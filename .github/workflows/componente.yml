@@ -36,7 +36,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $cfg = @{}
-          Get-Content componente.txt | Where-Object { $_ -match '^\s*(\w+)\s*=\s*(\S+)' } | ForEach-Object { $cfg[$Matches[1]] = $Matches[2] }
+          $tot = @{}
+          Get-Content componente.txt | Where-Object { $_ -match '^\s*(\w+)\s*=\s*(\S+)(.*)$' } | ForEach-Object { $cfg[$Matches[1]] = $Matches[2]; $tot[$Matches[1]] = ($Matches[2] + $Matches[3]).Trim() }
           New-Item -ItemType Directory -Force C:\c, C:\x | Out-Null
           foreach ($n in 'Audiveris', 'MuseScore') {
             $url = $cfg[$n]
@@ -52,13 +53,14 @@ jobs:
           # Audiveris: folderul cu exe-ul; MuseScore: folderul de deasupra lui bin
           Move-Item $aud.DirectoryName C:\z\Audiveris
           Move-Item $mus.Directory.Parent.FullName C:\z\MuseScore
-          Set-Content C:\z\Audiveris\versiune.txt $cfg['Audiveris']
+          Set-Content C:\z\Audiveris\versiune.txt $tot['Audiveris']
           # limbile pentru textul din partitură (Allegro, titluri): Audiveris le caută prin TESSDATA_PREFIX
+          # Audiveris cere motorul vechi („legacy”) al lui Tesseract, care există doar în fișierele din tessdata (nu în tessdata_fast sau tessdata_best)
           New-Item -ItemType Directory -Force C:\z\Audiveris\tessdata | Out-Null
           foreach ($l in 'eng', 'ita', 'deu', 'fra', 'ron') {
-            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$l.traineddata" -OutFile "C:\z\Audiveris\tessdata\$l.traineddata"
+            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/$l.traineddata" -OutFile "C:\z\Audiveris\tessdata\$l.traineddata"
           }
-          Set-Content C:\z\MuseScore\versiune.txt $cfg['MuseScore']
+          Set-Content C:\z\MuseScore\versiune.txt $tot['MuseScore']
           Get-ChildItem C:\z -Directory | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ((Get-ChildItem $_.FullName -Recurse | Measure-Object Length -Sum).Sum / 1MB) }
       - name: Probă împreună (MuseScore face un PDF, Audiveris îl recunoaște)
         shell: pwsh
@@ -79,6 +81,7 @@ jobs:
             $mxl = Get-ChildItem C:\t\out -Recurse -Filter *.mxl -ErrorAction SilentlyContinue
             $d += "Audiveris MXL: " + ($mxl.FullName -join ', ')
             $d += "Audiveris OCR: " + ((Select-String -Path C:\t\au-out.txt, C:\t\au-err.txt -Pattern 'OCR' | Select-Object -First 3 | ForEach-Object { $_.Line }) -join ' | ')
+            $d += "Audiveris limbi: " + $(if (Select-String -Path C:\t\au-out.txt, C:\t\au-err.txt -Pattern "Failed loading language|couldn't load any languages|components are not present" -Quiet) { 'EROARE la limbile Tesseract' } else { 'OK' })
             $d += "Audiveris stdout (sfarsit): " + ((Get-Content C:\t\au-out.txt -Raw) -replace '(?s)^.*(.{1500})$', '$1')
             $d += "Audiveris stderr (sfarsit): " + ((Get-Content C:\t\au-err.txt -Raw) -replace '(?s)^.*(.{1500})$', '$1')
             New-Item -ItemType Directory -Force C:\t\h | Out-Null
