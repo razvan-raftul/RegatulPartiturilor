@@ -365,18 +365,29 @@ class Fereastra(wx.Frame):
         self._ocupat_recunoastere = e_imagine
 
         def lucru():
+            cale_l, original_l, baza_l, d_rot = cale, original, baza, None
             try:
-                P = partitura.incarca(cale, progres=lambda m: wx.CallAfter(self.SetStatusText, m), pastreaza=pastreaza,
-                                      baza=baza, folder=folder, original=original)
+                # PDF scanat cu paginile culcate: lucrăm pe o copie cu paginile îndreptate
+                if pastreaza and original is None and cale.lower().endswith('.pdf'):
+                    rot = cuprins.rotatii(cale)
+                    if any(rot):
+                        wx.CallAfter(self.SetStatusText, 'Paginile sunt scanate culcate; le îndrept.')
+                        d_rot = tempfile.mkdtemp(prefix='regatul-drept-')
+                        cale_l = os.path.join(d_rot, os.path.basename(cale))
+                        cuprins.extrage_pagini(cale, 1, len(rot), cale_l)
+                        original_l = cale
+                        baza_l = baza or os.path.splitext(os.path.basename(cale))[0]
+                P = partitura.incarca(cale_l, progres=lambda m: wx.CallAfter(self.SetStatusText, m), pastreaza=pastreaza,
+                                      baza=baza_l, folder=folder, original=original_l)
                 if titlu and P.scor.metadata is not None:
                     P.scor.metadata.title = titlu
                 P.fara_salvare = not pastreaza
                 fis_brf = None
                 if brf:
-                    sursa = original or cale
+                    sursa = original_l or cale
                     dir_brf = recunoastere.folder_rezultate(sursa)
                     os.makedirs(dir_brf, exist_ok=True)
-                    fis_brf = os.path.join(dir_brf, recunoastere.nume_scurt(baza or os.path.splitext(os.path.basename(cale))[0], sursa) + '.brf')
+                    fis_brf = os.path.join(dir_brf, recunoastere.nume_scurt(baza_l or os.path.splitext(os.path.basename(cale))[0], sursa) + '.brf')
                     txt = braille.din_scor(P.extrage(P.numere[0], P.numere[-1], list(range(len(P.portative)))))
                     with open(fis_brf, 'w', encoding='ascii', errors='replace', newline='') as f:
                         f.write(braille.la_brf(txt))
@@ -387,6 +398,8 @@ class Fereastra(wx.Frame):
                 traceback.print_exc()
                 wx.CallAfter(self._deschisa, None, f'Nu am putut deschide partitura. Eroare: {ex}')
             finally:
+                if d_rot:
+                    shutil.rmtree(d_rot, ignore_errors=True)
                 if dupa:
                     dupa()
         threading.Thread(target=lucru, daemon=True).start()
@@ -882,6 +895,18 @@ def autotest(fisier, iesire):
         rez.append(f'PDF pagini {cuprins.numar_pagini(carte)} -> {cuprins.numar_pagini(bucata)}; cuprins: '
                    + str(len(cuprins.gaseste(carte)['piese'])) + ' piese')
         cuprins.incarca_sau_gaseste(carte)
+        # pagină culcată: portative desenate orizontal, apoi pagina întoarsă
+        from PIL import ImageDraw
+        dreapta = Image.new('L', (850, 1100), 255)
+        dr = ImageDraw.Draw(dreapta)
+        for k in range(8):
+            for l in range(5):
+                y = 120 + k * 120 + l * 10
+                dr.line([(80, y), (780, y)], fill=0, width=2)
+            dr.rectangle([82, 120 + k * 120 - 15, 110, 120 + k * 120 + 55], fill=0)    # „cheia” la început
+        culcata = os.path.join(d_pdf, 'culcata.pdf')
+        dreapta.rotate(90, expand=True).save(culcata, 'PDF', resolution=100)
+        rez.append('PAGINA CULCATA rotatii: ' + str(cuprins.rotatii(culcata)))
         rez.append('CUPRINS in Recunoscute: ' + str(os.path.isfile(os.path.join(d_pdf, 'Recunoscute', 'carte', 'cuprins.json'))))
         from nucleu import verificare
         rez.append('MAINI impartite in exemplu: ' + str(verificare.imparte_mainile(P.scor)))
