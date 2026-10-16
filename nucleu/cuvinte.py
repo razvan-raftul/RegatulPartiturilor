@@ -1,7 +1,10 @@
 """Descrierea partiturii în cuvinte, în română, măsură cu măsură și mână cu mână.
 
 Exemplu: „Măsura 3. Mâna dreaptă: mi 5 optime, sol 5 optime, do 6 pătrime.
-Mâna stângă: acord do 3, mi 3, sol 3, doime.”
+Mâna stângă:
+acord
+do 3, mi 3, sol 3, doime.”
+Cu un singur portativ ales, nu se mai spune a cui mână e.
 """
 from dataclasses import dataclass, field
 
@@ -95,7 +98,8 @@ def descrie_element(el, opt: Optiuni) -> str:
         if opt.scurt:
             parti.append('[' + ' '.join(nn) + ']')
         else:
-            parti.append('acord ' + (', '.join(nn[:-1]) + ' și ' + nn[-1] if len(nn) > 1 else nn[0]))
+            # „acord” pe rândul lui, notele pe rândul următor (cerut de Răzvan, mai ușor de urmărit)
+            parti.append('acord\n' + ', '.join(nn) + (',' if opt.ritm and not el.duration.isGrace else ''))
     else:
         parti.append(nume_nota(el.pitch, opt))
     if el.duration.isGrace:
@@ -176,6 +180,8 @@ def _evenimente_masura(m, opt: Optiuni):
 
 
 def descrie_voce(elemente, opt: Optiuni, dinamici) -> str:
+    """Notele una după alta, despărțite prin virgulă. Fiecare acord stă pe rândurile lui:
+    „acord” pe un rând, notele lui pe rândul următor; notele simple de după el continuă pe rând nou."""
     bucati = []
     for el in elemente:
         if opt.nuante:
@@ -186,7 +192,21 @@ def descrie_voce(elemente, opt: Optiuni, dinamici) -> str:
         bucati.append(descrie_element(el, opt))
     for _, txt in dinamici:
         bucati.append(txt)
-    return ', '.join(bucati) if not opt.scurt else ' '.join(bucati)
+    if opt.scurt:
+        return ' '.join(bucati)
+    linii = []
+    rand = []
+    for b in bucati:
+        if b.startswith('acord\n'):
+            if rand:
+                linii.append(', '.join(rand))
+                rand = []
+            linii.append(b)
+        else:
+            rand.append(b)
+    if rand:
+        linii.append(', '.join(rand))
+    return ',\n'.join(linii).replace('acord,\n', 'acord\n')
 
 
 def descrie_masura_portativ(m, opt: Optiuni) -> str:

@@ -165,7 +165,14 @@ class Partitura:
                 m = pt.parte.measure(nr)
                 if m is None:
                     continue
-                linii.append(f'{pt.nume}: ' + cuvinte.descrie_masura_portativ(m, opt) + '.')
+                text = cuvinte.descrie_masura_portativ(m, opt) + '.'
+                if len(portative) == 1:
+                    # un singur portativ ales: nu mai spunem a cui mână e, se știe
+                    linii.append(text)
+                elif '\n' in text:
+                    linii.append(f'{pt.nume}:\n' + text)
+                else:
+                    linii.append(f'{pt.nume}: ' + text)
             if bl:
                 linii.append(' '.join(x[0].upper() + x[1:] + '.' for x in bl))
             linii.append('')
