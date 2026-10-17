@@ -8,6 +8,7 @@ Cu un singur portativ ales, nu se mai spune a cui mână e.
 """
 from dataclasses import dataclass, field
 
+from music21 import duration as m21duration
 from music21 import articulations, bar, chord, clef, dynamics, expressions, key, meter, note, spanner, tempo
 
 NUME_NOTE = {'C': 'do', 'D': 're', 'E': 'mi', 'F': 'fa', 'G': 'sol', 'A': 'la', 'B': 'si'}
@@ -36,7 +37,7 @@ class Optiuni:
     scurt: bool = False          # scriere scurtă: do4 p, mi4 o (pentru citit repede)
     digitatie: bool = True
     nuante: bool = True          # nuanțe, articulații, legato, tempo
-    voci: bool = True            # când o mână are două voci, le spune separat
+    voci: bool = False           # True: vocile dintr-o mână se spun separat; False: puse într-una, în ordinea în care sună
 
 
 DURATE_SCURT = {'breve': 'B', 'whole': 'î', 'half': 'd', 'quarter': 'p', 'eighth': 'o', '16th': 's', '32nd': 't', '64th': '64'}
@@ -84,8 +85,10 @@ def text_digitatie(el) -> str:
     return ('degetul ' if len(dg) == 1 else 'degetele ') + ', '.join(dg)
 
 
-def descrie_element(el, opt: Optiuni) -> str:
-    """O notă, un acord sau o pauză."""
+def descrie_element(el, opt: Optiuni, durata=None, legat=None) -> str:
+    """O notă, un acord sau o pauză.
+    durata: lungimea totală în pătrimi când notele legate cu legato de prelungire se spun o singură dată.
+    legat: „ținut” / „ținut și în măsura următoare” pentru notele legate."""
     if isinstance(el, note.Rest):
         if el.fullMeasure in (True, 'always') or el.duration.type in ('complex', 'zero'):
             return 'pauză' if opt.scurt else 'pauză toată măsura'
@@ -102,13 +105,16 @@ def descrie_element(el, opt: Optiuni) -> str:
             parti.append('acord\n' + ', '.join(nn) + (',' if opt.ritm and not el.duration.isGrace else ''))
     else:
         parti.append(nume_nota(el.pitch, opt))
-    if el.duration.isGrace:
+    d = el.duration
+    if durata is not None and not d.isGrace:
+        d = m21duration.Duration(durata)
+    if d.isGrace:
         parti.insert(0, 'apogiatură')
-    elif opt.ritm and el.duration.type not in ('zero', 'complex'):
-        parti.append(text_durata(el.duration, opt))
-    elif opt.ritm and el.duration.type == 'complex':
-        parti.append('durată de ' + str(round(float(el.duration.quarterLength), 2)).replace('.', ',') + ' pătrimi')
-    extra = []
+    elif opt.ritm and d.type not in ('zero', 'complex'):
+        parti.append(text_durata(d, opt))
+    elif opt.ritm and d.type == 'complex':
+        parti.append('durată de ' + str(round(float(d.quarterLength), 2)).replace('.', ',') + ' pătrimi')
+    extra = [legat] if legat else []
     if opt.nuante:
         for a in el.articulations:
             for cls, nume in ARTICULATII.items():
@@ -127,8 +133,6 @@ def descrie_element(el, opt: Optiuni) -> str:
         dg = text_digitatie(el)
         if dg:
             extra.append(dg)
-    if el.tie is not None and el.tie.type in ('start', 'continue'):
-        extra.append('legată de următoarea')
     s = ' '.join(parti)
     if extra:
         s += ' (' + ', '.join(extra) + ')'
@@ -179,25 +183,60 @@ def _evenimente_masura(m, opt: Optiuni):
     return out
 
 
+def _aceleasi_note(a, b) -> bool:
+    try:
+        return sorted(p.ps for p in a.pitches) == sorted(p.ps for p in b.pitches)
+    except AttributeError:
+        return False
+
+
 def descrie_voce(elemente, opt: Optiuni, dinamici) -> str:
     """Notele una după alta, despărțite prin virgulă. Fiecare acord stă pe rândurile lui:
     „acord” pe un rând, notele lui pe rândul următor; notele simple de după el continuă pe rând nou."""
     bucati = []
-    for el in elemente:
+    i = 0
+    while i < len(elemente):
+        el = elemente[i]
         if opt.nuante:
             for off, txt in list(dinamici):
                 if off <= el.offset:
                     bucati.append(txt)
                     dinamici.remove((off, txt))
-        bucati.append(descrie_element(el, opt))
+        tip = el.tie.type if getattr(el, 'tie', None) is not None else None
+        if tip in ('start', 'continue'):
+            # notele legate cu legato de prelungire se spun o singură dată, cu toată durata
+            total = el.duration.quarterLength
+            j = i + 1
+            sfarsit = False
+            while j < len(elemente) and getattr(elemente[j], 'tie', None) is not None \
+                    and elemente[j].tie.type in ('continue', 'stop') and _aceleasi_note(el, elemente[j]):
+                total += elemente[j].duration.quarterLength
+                sfarsit = elemente[j].tie.type == 'stop'
+                j += 1
+            legat = 'ținut' if sfarsit else 'ținut și în măsura următoare'
+            text = descrie_element(el, opt, durata=total, legat=legat)
+            if tip == 'continue' and i == 0:
+                text = 'se ține din măsura trecută: ' + text
+            bucati.append(text)
+            i = j
+            continue
+        text = descrie_element(el, opt)
+        if tip == 'stop' and i == 0:
+            text = 'se ține din măsura trecută: ' + text
+        bucati.append(text)
+        i += 1
     for _, txt in dinamici:
         bucati.append(txt)
+    return _aranjeaza(bucati, opt)
+
+
+def _aranjeaza(bucati, opt: Optiuni) -> str:
     if opt.scurt:
         return ' '.join(bucati)
     linii = []
     rand = []
     for b in bucati:
-        if b.startswith('acord\n'):
+        if b.startswith(('acord\n', 'împreună\n')):
             if rand:
                 linii.append(', '.join(rand))
                 rand = []
@@ -206,7 +245,88 @@ def descrie_voce(elemente, opt: Optiuni, dinamici) -> str:
             rand.append(b)
     if rand:
         linii.append(', '.join(rand))
-    return ',\n'.join(linii).replace('acord,\n', 'acord\n')
+    return ',\n'.join(linii).replace('acord,\n', 'acord\n').replace('împreună,\n', 'împreună\n')
+
+
+def _lanturi(elemente):
+    """Notele unei voci, cu notele legate (legato de prelungire) strânse într-una singură.
+    Întoarce (element, durată totală, „ținut...” sau None, începe în măsura trecută)."""
+    out = []
+    i = 0
+    while i < len(elemente):
+        el = elemente[i]
+        tip = el.tie.type if getattr(el, 'tie', None) is not None else None
+        if tip in ('start', 'continue'):
+            total = el.duration.quarterLength
+            j = i + 1
+            sfarsit = False
+            while j < len(elemente) and getattr(elemente[j], 'tie', None) is not None \
+                    and elemente[j].tie.type in ('continue', 'stop') and _aceleasi_note(el, elemente[j]):
+                total += elemente[j].duration.quarterLength
+                sfarsit = elemente[j].tie.type == 'stop'
+                j += 1
+            out.append((el, total, 'ținut' if sfarsit else 'ținut și în măsura următoare', tip == 'continue' and i == 0))
+            i = j
+            continue
+        out.append((el, el.duration.quarterLength, None, tip == 'stop' and i == 0))
+        i += 1
+    return out
+
+
+def descrie_o_voce(m, opt: Optiuni, dinamici) -> str:
+    """Toate vocile unei mâini puse într-una singură, în ordinea în care sună notele (cerut de Răzvan:
+    nu știe să citească pe două voci). Notele care încep în același timp se spun împreună;
+    pauza se spune doar când nu sună nimic."""
+    voci = list(m.voices) or [m]
+    evenimente = []   # (offset, element, durată, legat, din măsura trecută)
+    for v in voci:
+        el = [x for x in v.notesAndRests if not isinstance(x, note.Rest)]
+        el.sort(key=lambda x: x.getOffsetInHierarchy(m))
+        for (x, total, legat, trecut) in _lanturi(el):
+            evenimente.append((float(x.getOffsetInHierarchy(m)), x, total, legat, trecut))
+    if not evenimente:
+        lungime = m.duration.quarterLength or m.barDuration.quarterLength
+        return descrie_element(note.Rest(quarterLength=lungime), opt) if lungime else 'gol'
+    evenimente.sort(key=lambda e: (e[0], min(p.ps for p in e[1].pitches)))
+    bucati = []
+    sfarsit = 0.0
+    k = 0
+    while k < len(evenimente):
+        off = evenimente[k][0]
+        grup = [e for e in evenimente[k:] if abs(e[0] - off) < 1e-6]
+        k += len(grup)
+        if opt.nuante:
+            for o, txt in list(dinamici):
+                if o <= off + 1e-6:
+                    bucati.append(txt)
+                    dinamici.remove((o, txt))
+        if off > sfarsit + 1e-6:
+            bucati.append(descrie_element(note.Rest(quarterLength=off - sfarsit), opt))
+        trecut = all(e[4] for e in grup)
+        if len(grup) == 1:
+            e = grup[0]
+            text = descrie_element(e[1], opt, durata=e[2], legat=e[3])
+        elif len({(e[2], e[3]) for e in grup}) == 1:
+            # toate încep și se termină împreună: acord
+            ac = chord.Chord([p for e in grup for p in e[1].pitches], quarterLength=grup[0][1].duration.quarterLength)
+            ac.articulations = grup[0][1].articulations
+            text = descrie_element(ac, opt, durata=grup[0][2], legat=grup[0][3])
+        else:
+            # încep împreună, dar țin diferit: fiecare cu durata lui
+            text = 'împreună\n' + ', '.join(descrie_element(e[1], opt, durata=e[2], legat=e[3]) for e in grup)
+        if trecut:
+            text = 'se ține din măsura trecută: ' + text
+        elif off < sfarsit - 1e-6 and not opt.scurt:
+            # începe cât încă ține nota de dinainte
+            text = 'peste el ' + text
+        bucati.append(text)
+        sfarsit = max(sfarsit, max(e[0] + float(e[2]) for e in grup))
+    lungime = float(m.barDuration.quarterLength) if m.barDuration else sfarsit
+    if lungime > sfarsit + 1e-6 and not evenimente[-1][3]:
+        bucati.append(descrie_element(note.Rest(quarterLength=lungime - sfarsit), opt))
+    for _, txt in dinamici:
+        bucati.append(txt)
+    return _aranjeaza(bucati, opt)
 
 
 def descrie_masura_portativ(m, opt: Optiuni) -> str:
@@ -230,8 +350,12 @@ def descrie_masura_portativ(m, opt: Optiuni) -> str:
             if not el or all(isinstance(x, note.Rest) and getattr(x.style, 'hideObjectOnPrint', False) for x in el):
                 continue
             i += 1
-            parti.append(f'vocea {i}: ' + descrie_voce(el, opt, dinamici if i == 1 else []))
-        return '; '.join(parti)
+            parti.append((i, descrie_voce(el, opt, dinamici if i == 1 else [])))
+        # fiecare voce pe rândul ei; la două voci: vocea de sus și vocea de jos
+        nume = {1: 'vocea de sus', 2: 'vocea de jos'} if len(parti) == 2 else {}
+        return ';\n'.join(f'{nume.get(k, f"vocea {k}")}: {t}' for k, t in parti)
+    if voci and len([v for v in voci if v.notes]) > 1:
+        return descrie_o_voce(m, opt, dinamici)
     el = list(m.recurse().notesAndRests)
     el.sort(key=lambda x: x.getOffsetInHierarchy(m))
     if not el:
