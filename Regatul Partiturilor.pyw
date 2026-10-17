@@ -249,7 +249,8 @@ class Fereastra(wx.Frame):
         self.c_scurt.SetValue(o.get('scurt', False))
         self.c_dig.SetValue(o.get('digitatie', True))
         self.c_nuante.SetValue(o.get('nuante', True))
-        self.c_voci.SetValue(o.get('voci', True))
+        # din 17 oct. 2026 vocile se spun implicit puse într-una (v2 = setarea a fost salvată după schimbare)
+        self.c_voci.SetValue(bool(o.get('voci', False)) if o.get('v2') else False)
 
     def optiuni(self) -> cuvinte.Optiuni:
         return cuvinte.Optiuni(ritm=self.c_ritm.GetValue(), octava=OCTAVE[max(0, self.c_octava.GetSelection())][0], scurt=self.c_scurt.GetValue(),
@@ -455,7 +456,7 @@ class Fereastra(wx.Frame):
     def actualizeaza(self, salveaza=False):
         if salveaza:
             o = self.optiuni()
-            self.setari['optiuni'] = o.__dict__
+            self.setari['optiuni'] = {**o.__dict__, 'v2': True}
             scrie_setari(self.setari)
         if not self.P:
             return
@@ -838,7 +839,7 @@ class Fereastra(wx.Frame):
                 self.UnregisterHotKey(ID_TASTA_GLOBALA)
             except Exception:
                 pass
-        self.setari['optiuni'] = self.optiuni().__dict__
+        self.setari['optiuni'] = {**self.optiuni().__dict__, 'v2': True}
         scrie_setari(self.setari)
         e.Skip()
 
