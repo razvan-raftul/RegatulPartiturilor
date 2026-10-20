@@ -54,6 +54,13 @@ def _atribute_dupa_mana(self):
 segment.BrailleSegment.addGroupingAttributes = _atribute_dupa_mana
 
 
+# ---------- Fără comprimarea măsurilor repetate ----------
+# music21 strânge măsurile identice la rând într-una cu semn de repetiție. La pian, dacă se întâmplă doar la
+# o mână (de exemplu mâna stângă cu aceeași măsură de 4 ori), măsurile celeilalte mâini din dreptul lor
+# se pierdeau din Braille (Cramer, Studiul 46: lipseau măsurile 2-4). Răzvan citește totul scris întreg.
+segment.areGroupingsIdentical = lambda a, b: False
+
+
 # ---------- Regula 1: titlul ----------
 def _text_braille(text: str) -> str:
     """Text obișnuit în braille ASCII: majusculă = punctele 4 6, cifrele cu semnul de număr.
