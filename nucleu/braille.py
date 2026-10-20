@@ -14,7 +14,7 @@ import re
 import unicodedata
 
 from music21 import bar, metadata, stream
-from music21.braille import segment, translate
+from music21.braille import basic, segment, text, translate
 
 # Unicode Braille (U+2800 + puncte) -> ASCII Braille (tabelul nord-american, folosit de fișierele .brf)
 ASCII_BRF = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)="
@@ -59,6 +59,135 @@ segment.BrailleSegment.addGroupingAttributes = _atribute_dupa_mana
 # o mână (de exemplu mâna stângă cu aceeași măsură de 4 ori), măsurile celeilalte mâini din dreptul lor
 # se pierdeau din Braille (Cramer, Studiul 46: lipseau măsurile 2-4). Răzvan citește totul scris întreg.
 segment.areGroupingsIdentical = lambda a, b: False
+
+
+# ---------- Câte două măsuri într-o paralelă, numerotate 1, 3, 5... ----------
+# Cerut de Răzvan (20 oct. 2026), ca în partiturile lui braille: fiecare paralelă are două măsuri, mâna
+# dreaptă deasupra, mâna stângă dedesubt; numărul se scrie doar la începutul paralelei (1, 3, 5...), a doua
+# măsură urmează pe același rând, după un spațiu. Paralela se scrie întâi pe un rând lung, fără limită;
+# dacă un rând nu încape în lățimea paginii, _rupe_randuri îl continuă pe rândul următor (dreapta toată,
+# apoi stânga toată), ca în partiturile transcrise de om.
+MASURI_PE_PARALELA = 2
+_FARA_LIMITA = 4000
+
+
+def _fara_limita(linie):
+    if linie.lineLength < _FARA_LIMITA:
+        linie.allChars.extend([text.symbols['space']] * (_FARA_LIMITA - linie.lineLength))
+        linie.lineLength = _FARA_LIMITA
+
+
+def _adauga_masura(self, numar_braille, gr, gl):
+    perechea = getattr(self, 'currentGroupingPair', None) or (None, None)
+    cheie = perechea[0] or perechea[1]
+    m = cheie.measure if cheie is not None else None
+    if not hasattr(self, '_prima_masura'):
+        self._prima_masura, self._masura_curenta = m, None
+    noua = m != self._masura_curenta
+    self._masura_curenta = m
+    paralela_noua = (self.rightHandLine is None or
+                     (noua and m is not None and self._prima_masura is not None
+                      and (m - self._prima_masura) % MASURI_PE_PARALELA == 0))
+    if paralela_noua:
+        self.makeNewLines()
+        _fara_limita(self.rightHandLine)
+        _fara_limita(self.leftHandLine)
+        self.rightHandLine.insert(self.highestMeasureNumberLength - len(numar_braille), numar_braille)
+        self.leftHandLine.textLocation = self.rightHandLine.textLocation
+        self.rightHandLine.append(text.symbols['rh_keyboard'], addSpace=True)
+        self.leftHandLine.append(text.symbols['lh_keyboard'], addSpace=True)
+        if gr:
+            for punct in basic.yieldDots(gr[0]):
+                self.rightHandLine.append(punct, addSpace=False)
+            self.rightHandLine.append(gr, addSpace=False)
+        if gl:
+            for punct in basic.yieldDots(gl[0]):
+                self.leftHandLine.append(punct, addSpace=False)
+            self.leftHandLine.append(gl, addSpace=False)
+    else:
+        if gl:
+            self.leftHandLine.append(gl, addSpace=True)
+        if gr:
+            self.rightHandLine.append(gr, addSpace=True)
+    loc = max(self.rightHandLine.textLocation, self.leftHandLine.textLocation)
+    self.rightHandLine.textLocation = self.leftHandLine.textLocation = loc
+    self.rightHandLine.containsNoteGrouping = True
+    self.leftHandLine.containsNoteGrouping = True
+
+
+text.BrailleKeyboard.addNoteGroupings = _adauga_masura
+
+
+def _recentreaza_titlurile(self):
+    """Ca în music21, dar titlul de deasupra (măsura, armura) se centrează pe lățimea paginii,
+    nu pe rândurile lungi ale paralelelor (care se rup abia după aceea)."""
+    for (inceput, sfarsit) in self.allHeadings:
+        lung = 0
+        for i in range(sfarsit, len(self.allLines)):
+            if self.allLines[i].isHeading:
+                break
+            lung = max(lung, self.allLines[i].textLocation)
+        lung = min(lung, self.lineLength)
+        for j in range(inceput, sfarsit):
+            linie = self.allLines[j]
+            t = str(linie).strip(text.symbols['space'])
+            if lung > len(t):
+                linie.insert(0, t.center(lung, text.symbols['space']))
+                linie.textLocation = lung
+
+
+text.BrailleText.recenterHeadings = _recentreaza_titlurile
+
+_GOL = '\u2800'
+_CRATIMA = '\u2810'
+MD = text.symbols['rh_keyboard']   # semnul mâinii drepte
+MS = text.symbols['lh_keyboard']   # semnul mâinii stângi      # cratima muzicală (punctul 5): măsura continuă pe rândul următor
+
+
+def _inceput_muzica(rand: str) -> int:
+    """Unde începe muzica pe rândul unei paralele: după numărul măsurii și semnul mâinii."""
+    i = 0
+    while i < len(rand) and rand[i] == _GOL:
+        i += 1
+    while i < len(rand) and rand[i] != _GOL:
+        i += 1
+    return i
+
+
+def _strange(rand: str) -> str:
+    i = _inceput_muzica(rand)
+    return rand[:i] + re.sub(_GOL + '{2,}', _GOL, rand[i:])
+
+
+def _rupe_randuri(muzica: str, latime: int) -> str:
+    """Rândurile mai lungi decât pagina continuă pe rândul următor, aliniate sub muzică (dreapta toată,
+    apoi stânga toată). Dacă o paralelă se rupe, alinierea măsurilor între mâini nu mai ține, deci la
+    amândouă mâinile rămâne un singur spațiu între măsuri. Se rupe între măsuri; dacă o măsură singură
+    nu încape, se rupe în ea, cu cratimă."""
+    randuri = [r.rstrip(_GOL + ' ') for r in muzica.split('\n')]
+    for k in range(len(randuri) - 1):
+        if MD in randuri[k] and MS in randuri[k + 1] and max(len(randuri[k]), len(randuri[k + 1])) > latime:
+            randuri[k], randuri[k + 1] = _strange(randuri[k]), _strange(randuri[k + 1])
+    iesire = []
+    for rand in randuri:
+        if len(rand) <= latime:
+            iesire.append(rand)
+            continue
+        rand = _strange(rand)
+        retragere = min(_inceput_muzica(rand) + 1, latime // 4)
+        primul = True
+        while len(rand) > (latime if primul else latime - retragere):
+            lat = latime if primul else latime - retragere
+            taie = rand.rfind(_GOL, 0, lat + 1)
+            if taie <= (retragere if primul else 0):
+                bucata, rand = rand[:lat - 1] + _CRATIMA, rand[lat - 1:]
+            else:
+                bucata, rand = rand[:taie].rstrip(_GOL), rand[taie:].lstrip(_GOL)
+            iesire.append(bucata if primul else _GOL * retragere + bucata)
+            primul = False
+        if rand:
+            iesire.append(rand if primul else _GOL * retragere + rand)
+    return '\n'.join(iesire)
 
 
 # ---------- Regula 1: titlul ----------
@@ -155,4 +284,5 @@ def din_scor(scor: stream.Score, latime: int = 40, final: bool = True) -> str:
             except Exception as e:
                 bucati.append(f'[Braille indisponibil pentru {p.partName or "această partidă"}: {e}]')
         muzica = '\n\n'.join(bucati)
+    muzica = _rupe_randuri(muzica, latime)
     return (sus + '\n\n' + muzica) if sus else muzica
