@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 import traceback
 
 # În programul instalat (fără consolă) nu există stdout/stderr; unele biblioteci scriu acolo și s-ar opri cu eroare.
@@ -49,7 +50,7 @@ Control plus Shift plus U: măsura de verificat anterioară.
 Redare cu sunet (se cântă măsurile și portativele alese):
 F5: redă selecția. Shift plus F5: redă de la măsura aleasă până la final.
 F6: pauză sau continuă. F7: oprește.
-Control plus minus: mai rar cu 5 la sută. Control plus egal (sau plus): mai repede cu 5 la sută. Control plus 0: tempoul scris. Dacă piesa se cântă, se schimbă pe loc.
+Shift plus 1: mai rar cu 5 la sută. Shift plus 2: mai repede cu 5 la sută. Shift plus 0: tempoul scris. Dacă piesa se cântă, se schimbă pe loc și continuă de unde a ajuns.
 Control plus R: redare în buclă, pornită sau oprită.
 
 Citește din fereastră (pentru aplicațiile editurilor, din care nu se poate descărca):
@@ -91,6 +92,9 @@ class Fereastra(wx.Frame):
         self.redare = redare.Redare()
         self.redare.la_sfarsit = lambda: wx.CallAfter(self.SetStatusText, 'Redarea s-a terminat.')
         self.procent = int(self.setari.get('tempo', 100))
+        self._midi_cache = (None, None)      # (selecția, MIDI la 100%): nu se mai face din nou la fiecare tempo
+        self._redat = None                   # (selecția, procentul) cu care se cântă acum
+        self._tempo_amanat = None
         self._ocupat_recunoastere = False
         self._braille_id = 0
         self._meniuri()
@@ -150,9 +154,9 @@ class Fereastra(wx.Frame):
         self._m(r, 'Oprește\tF7', self.opreste)
         r.AppendSeparator()
         # scurtăturile pentru tempo se prind direct din tastatură (vezi _taste_tempo): în meniu doar se afișează
-        self._m(r, 'Mai rar cu 5 la sută (Control minus)', lambda e: self.schimba_tempo(-5))
-        self._m(r, 'Mai repede cu 5 la sută (Control egal sau Control plus)', lambda e: self.schimba_tempo(5))
-        self._m(r, 'Tempoul scris (Control 0)', lambda e: self.schimba_tempo(0))
+        self._m(r, 'Mai rar cu 5 la sută (Shift 1)', lambda e: self.schimba_tempo(-5))
+        self._m(r, 'Mai repede cu 5 la sută (Shift 2)', lambda e: self.schimba_tempo(5))
+        self._m(r, 'Tempoul scris (Shift 0)', lambda e: self.schimba_tempo(0))
         self.m_bucla = r.AppendCheckItem(wx.ID_ANY, 'Redare în buclă\tCtrl+R')
         self.Bind(wx.EVT_MENU, self.comuta_bucla, self.m_bucla)
         mb.Append(r, '&Redare')
@@ -420,6 +424,7 @@ class Fereastra(wx.Frame):
             self.mesaj(eroare, 'Nu s-a deschis')
             return
         self.P = P
+        self._midi_cache = (None, None)
         self.SetTitle(f'{P.titlu} – {NUME}')
         self.lista.Set(['Despre piesă', 'Toată piesa'] + [('Anacruza' if n == 0 else f'Măsura {n}') + (', de verificat' if n in P.nesigure else '')
                                                           for n in P.numere])
@@ -570,14 +575,23 @@ class Fereastra(wx.Frame):
         if pana_la_final:
             ultima = self.P.numere[-1]
         try:
-            cale = redare.fa_midi(self.P.extrage(prima, ultima, port), self.procent)
-            self.redare.bucla = self.m_bucla.IsChecked()
-            self.redare.canta(cale)
+            sel = (id(self.P), prima, ultima, tuple(port))
+            self._porneste(sel)
             unde = f'măsura {prima}' if prima == ultima else f'măsurile {prima}-{ultima}'
             self.SetStatusText(f'Se cântă {unde}, tempo {self.procent} la sută' + (', în buclă.' if self.redare.bucla else '.'))
         except Exception as ex:
             traceback.print_exc()
             self.mesaj(f'Nu am putut reda. Eroare: {ex}', 'Redare')
+
+    def _porneste(self, sel, de_la_ms=0, in_pauza=False):
+        """Cântă selecția la tempoul de acum. MIDI-ul de bază se face o singură dată pentru o selecție."""
+        if self._midi_cache[0] != sel:
+            _, prima, ultima, port = sel
+            self._midi_cache = (sel, redare.midi_octeti(self.P.extrage(prima, ultima, list(port))))
+        date = redare.schimba_tempo_midi(self._midi_cache[1], self.procent)
+        self.redare.bucla = self.m_bucla.IsChecked()
+        self.redare.canta(redare.scrie_temporar(date), de_la_ms, in_pauza)
+        self._redat = (sel, self.procent)
 
     def _portative_alese(self):
         k = self.portative.GetSelection()
@@ -597,27 +611,41 @@ class Fereastra(wx.Frame):
     def schimba_tempo(self, pas):
         vechi = self.procent
         self.procent = 100 if pas == 0 else min(200, max(20, self.procent + pas))
-        self.setari['tempo'] = self.procent
-        scrie_setari(self.setari)
         if pas and self.procent == vechi:
             text = 'Tempoul e deja cel mai ' + ('rar' if pas < 0 else 'repede') + f', {self.procent} la sută.'
         else:
             text = f'Tempo {self.procent} la sută.'
         self.SetStatusText(text)
         voce.spune(text, intrerupe=True)
-        # dacă se cântă, se reia imediat cu tempoul nou
-        if self.redare.stare in ('canta', 'pauza') and self.P:
-            self.reda(False)
+        # se aplică după o pauză scurtă: la mai multe apăsări la rând, sunetul se schimbă o singură dată
+        if self._tempo_amanat:
+            self._tempo_amanat.Stop()
+        self._tempo_amanat = wx.CallLater(250, self._aplica_tempo)
+
+    def _aplica_tempo(self):
+        self._tempo_amanat = None
+        self.setari['tempo'] = self.procent
+        scrie_setari(self.setari)
+        if self.redare.stare in ('canta', 'pauza') and self._redat and self._redat[1] != self.procent:
+            sel, vechi = self._redat
+            # același loc din muzică: la tempo nou, aceeași notă cade la alt moment
+            poz = self.redare.pozitie() * vechi / self.procent
+            try:
+                self._porneste(sel, poz, in_pauza=(self.redare.stare == 'pauza'))
+            except Exception as ex:
+                traceback.print_exc()
+                self.SetStatusText(f'Nu am putut schimba tempoul. Eroare: {ex}')
 
     def _taste_tempo(self, e):
-        """Control minus / Control egal (sau plus) / Control 0, de pe tastatura principală sau numerică."""
-        k = e.GetKeyCode()
-        if e.ControlDown() and not e.AltDown():
-            if k in (ord('-'), wx.WXK_SUBTRACT, wx.WXK_NUMPAD_SUBTRACT, 189):
+        """Shift 1 (mai rar), Shift 2 (mai repede), Shift 0 (tempoul scris), de pe rândul de cifre."""
+        if e.ShiftDown() and not e.ControlDown() and not e.AltDown():
+            k = e.GetKeyCode()
+            r = e.GetRawKeyCode() if os.name == 'nt' else 0     # tasta fizică, oricare ar fi aranjarea tastaturii
+            if k == ord('1') or r == 0x31:
                 self.schimba_tempo(-5); return
-            if k in (ord('='), ord('+'), wx.WXK_ADD, wx.WXK_NUMPAD_ADD, 187):
+            if k == ord('2') or r == 0x32:
                 self.schimba_tempo(5); return
-            if k in (ord('0'), wx.WXK_NUMPAD0):
+            if k == ord('0') or r == 0x30:
                 self.schimba_tempo(0); return
         e.Skip()
 
@@ -908,6 +936,12 @@ def autotest(fisier, iesire):
         cale_midi = redare.fa_midi(P.extrage(P.numere[0], P.numere[0] + 3, [0]), 50)
         rez.append(f'MIDI {os.path.getsize(cale_midi)} octeti')
         os.remove(cale_midi)
+        baza_midi = redare.midi_octeti(P.extrage(P.numere[0], P.numere[0] + 3, [0]))
+        t0 = time.time()
+        rapid = redare.schimba_tempo_midi(baza_midi, 150)
+        rez.append(f'TEMPO RAPID {len(rapid) == len(baza_midi) and rapid != baza_midi} {int((time.time() - t0) * 1000)} ms')
+        from music21 import tempo as m21tempo
+        rez.append('TEMPO OPTIMI ' + ', '.join(cuvinte.text_tempo(m21tempo.MetronomeMark(number=138, referent='eighth'))))
         f.la_nesigura(1)
         # cărțile PDF: pypdfium2 trebuie să fie în program (citește și taie pagini)
         from PIL import Image
