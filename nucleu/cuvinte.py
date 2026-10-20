@@ -60,6 +60,30 @@ def nume_nota(p, opt: Optiuni) -> str:
     return s
 
 
+DURATE_PLURAL = {'breve': 'brevis', 'whole': 'note întregi', 'half': 'doimi', 'quarter': 'pătrimi', 'eighth': 'optimi',
+                 '16th': 'șaisprezecimi', '32nd': 'treizecidoimi'}
+
+
+def text_tempo(mm) -> list:
+    """Un semn de metronom -> [„Moderato”, „138 de optimi pe minut”]. Numărul se spune pe figura scrisă
+    (optimea = 138 rămâne 138 de optimi, nu 138 de pătrimi); la pătrime doar „69 pe minut”.
+    Numele de tempo pe care music21 îl ghicește singur din număr (de exemplu „allegrissimo”) nu se spune."""
+    t = []
+    if mm.text and not getattr(mm, 'textImplicit', False):
+        t.append(str(mm.text))
+    if mm.number and not getattr(mm, 'numberImplicit', False):
+        n = int(round(mm.number))
+        ref = getattr(mm, 'referent', None)
+        tip, puncte = (ref.type, ref.dots) if ref is not None else ('quarter', 0)
+        if tip == 'quarter' and puncte == 0:
+            t.append(f'{n} pe minut')
+        else:
+            de = ' de' if (n % 100 >= 20 or (n >= 100 and n % 100 == 0)) else ''
+            fig = DURATE_PLURAL.get(tip, DURATE.get(tip, tip)) + (' cu punct' if puncte == 1 else ' cu două puncte' if puncte == 2 else '')
+            t.append(f'{n}{de} {fig} pe minut')
+    return t
+
+
 def text_durata(d, opt: Optiuni) -> str:
     if opt.scurt:
         s = DURATE_SCURT.get(d.type, d.type) + '.' * d.dots
@@ -171,11 +195,7 @@ def _evenimente_masura(m, opt: Optiuni):
             if c:
                 out.append(c)
         elif isinstance(el, tempo.MetronomeMark) and opt.nuante:
-            t = []
-            if el.text:
-                t.append(str(el.text))
-            if el.number:
-                t.append(f'{int(el.number)} pe minut')
+            t = text_tempo(el)
             if t:
                 out.append('tempo ' + ', '.join(t))
         elif isinstance(el, tempo.TempoText) and opt.nuante:

@@ -129,7 +129,7 @@ class Partitura:
             r.append('Măsura de ' + cuvinte.text_masura_timp(ts) + '.')
         mm = self.scor.recurse().getElementsByClass(tempo.MetronomeMark).first()
         if mm is not None:
-            t = [x for x in (mm.text, f'{int(mm.number)} pe minut' if mm.number else '') if x]
+            t = cuvinte.text_tempo(mm)
             if t:
                 r.append('Tempo: ' + ', '.join(str(x) for x in t) + '.')
         n = len([x for x in self.numere if x])
