@@ -10,6 +10,7 @@ import os
 import struct
 import sys
 import threading
+import time
 
 from . import limba
 from .limba import _
@@ -156,9 +157,52 @@ def catalog():
 
 
 # ---------------- FluidSynth ----------------
+# întârzierea sunetului: (mărimea unei bucăți, câte bucăți); mai mic = mai repede, dar placa de sunet poate pârâi
+LATENTE = {'mica': (128, 3), 'normala': (256, 3), 'sigura': (512, 3)}
+
+
+def _id_iesire_implicita():
+    """Identificatorul ieșirii de sunet implicite din Windows (difuzoare, căști...), ca să vedem când se schimbă.
+    Prin IMMDeviceEnumerator (COM), cu ctypes. Întoarce '' dacă nu se poate afla."""
+    if os.name != 'nt':
+        return ''
+    from ctypes import wintypes
+    ole = ctypes.windll.ole32
+
+    class GUID(ctypes.Structure):
+        _fields_ = [('a', wintypes.DWORD), ('b', wintypes.WORD), ('c', wintypes.WORD), ('d', ctypes.c_ubyte * 8)]
+
+    def guid(t):
+        g = GUID()
+        ole.CLSIDFromString(ctypes.c_wchar_p(t), ctypes.byref(g))
+        return g
+    clsid = guid('{BCDE0395-E52F-467C-8E3D-C4579291692E}')     # MMDeviceEnumerator
+    iid = guid('{A95664D2-9614-4F35-A746-DE8DB63617E6}')       # IMMDeviceEnumerator
+    enum = ctypes.c_void_p()
+    if ole.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid), ctypes.byref(enum)) != 0 or not enum:
+        return ''
+
+    def metoda(obj, index, *tipuri):
+        vt = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *tipuri)(vt[index])
+    dev = ctypes.c_void_p()
+    rez = ''
+    try:
+        if metoda(enum, 4, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))(enum, 0, 0, ctypes.byref(dev)) == 0 and dev:
+            p = ctypes.c_wchar_p()
+            if metoda(dev, 5, ctypes.POINTER(ctypes.c_wchar_p))(dev, ctypes.byref(p)) == 0 and p:
+                rez = p.value or ''
+                ole.CoTaskMemFree(p)
+            metoda(dev, 2)(dev)          # Release
+    finally:
+        metoda(enum, 2)(enum)            # Release
+    return rez
+
+
 class SintetizatorFluid:
     """Aceeași folosire ca claviatura.Sintetizator, dar cu FluidSynth și banca de sunete.
-    Rămâne deschis cât merge programul (nu ocupă sintetizatorul MIDI al Windows, deci redarea piesei merge în paralel)."""
+    Rămâne deschis cât merge programul (nu ocupă sintetizatorul MIDI al Windows, deci redarea piesei merge în paralel).
+    Urmărește ieșirea de sunet a Windows: dacă treci de pe difuzoare pe căști, sunetul trece și el, singur."""
     exclusiv = False
 
     def __init__(self):
@@ -167,7 +211,10 @@ class SintetizatorFluid:
         self._f = None
         self._settings = self._synth = self._driver = None
         self._sfid = -1
-        self._lacat = threading.Lock()
+        self._lacat = threading.RLock()
+        self.latenta = 'normala'
+        self._iesire = None
+        self._paznic = False
 
     def deschis(self):
         return self._driver is not None
@@ -186,6 +233,7 @@ class SintetizatorFluid:
                                 ('fluid_synth_program_select', ci, [vp, ci, ci, ci, ci]),
                                 ('fluid_synth_noteon', ci, [vp, ci, ci, ci]), ('fluid_synth_noteoff', ci, [vp, ci, ci]),
                                 ('fluid_synth_cc', ci, [vp, ci, ci, ci]), ('fluid_synth_all_notes_off', ci, [vp, ci]),
+                                ('fluid_synth_pitch_bend', ci, [vp, ci, ci]),
                                 ('new_fluid_audio_driver', vp, [vp, vp]), ('delete_fluid_audio_driver', None, [vp])):
             fn = getattr(f, nume)
             fn.restype = res
@@ -196,6 +244,9 @@ class SintetizatorFluid:
         """Încarcă FluidSynth și banca de sunete; cu_sunet=False doar pentru probe (fără placă de sunet)."""
         with self._lacat:
             self._pregateste(cu_sunet)
+        if cu_sunet and not self._paznic and os.name == 'nt':
+            self._paznic = True
+            threading.Thread(target=self._urmareste_iesirea, daemon=True).start()
 
     def _pregateste(self, cu_sunet):
         if self._synth is None:
@@ -203,8 +254,6 @@ class SintetizatorFluid:
             s = f.new_fluid_settings()
             f.fluid_settings_setnum(s, b'synth.gain', 0.7)
             f.fluid_settings_setint(s, b'synth.polyphony', 256)
-            f.fluid_settings_setint(s, b'audio.period-size', 128)     # întârziere foarte mică între tastă și sunet (~9 ms)
-            f.fluid_settings_setint(s, b'audio.periods', 3)
             synth = f.new_fluid_synth(s)
             sfid = f.fluid_synth_sfload(synth, os.path.join(folder_sunete(), SF2).encode('mbcs' if os.name == 'nt' else 'utf-8'), 1)
             if sfid < 0:
@@ -212,16 +261,62 @@ class SintetizatorFluid:
                 f.delete_fluid_settings(s)
                 raise RuntimeError(_('Banca de sunete nu s-a putut încărca.'))
             self._f, self._settings, self._synth, self._sfid = f, s, synth, sfid
+            self.schimba_instrument(self.program)
         if cu_sunet and self._driver is None:
-            f, s = self._f, self._settings
-            for drv in (b'wasapi', b'dsound', b'waveout'):
-                f.fluid_settings_setstr(s, b'audio.driver', drv)
-                self._driver = f.new_fluid_audio_driver(s, self._synth)
-                if self._driver:
-                    break
-            if not self._driver:
-                raise RuntimeError(_('Placa de sunet nu se poate folosi pentru claviatură.'))
-        self.schimba_instrument(self.program)
+            self._porneste_driver()
+
+    def _porneste_driver(self):
+        f, s = self._f, self._settings
+        marime, bucati = LATENTE.get(self.latenta, LATENTE['normala'])
+        f.fluid_settings_setint(s, b'audio.period-size', marime)
+        f.fluid_settings_setint(s, b'audio.periods', bucati)
+        for drv in (b'wasapi', b'dsound', b'waveout'):
+            f.fluid_settings_setstr(s, b'audio.driver', drv)
+            self._driver = f.new_fluid_audio_driver(s, self._synth)
+            if self._driver:
+                break
+        if not self._driver:
+            raise RuntimeError(_('Placa de sunet nu se poate folosi pentru claviatură.'))
+
+    def reporneste_sunetul(self):
+        """Închide și redeschide legătura cu placa de sunet (altă ieșire, altă întârziere). Notele care sună se opresc."""
+        with self._lacat:
+            if self._synth is None:
+                return
+            if self._driver:
+                self._f.delete_fluid_audio_driver(self._driver)
+                self._driver = None
+            self._porneste_driver()
+
+    def seteaza_latenta(self, latenta):
+        if latenta in LATENTE and latenta != self.latenta:
+            self.latenta = latenta
+            if self._driver:
+                self.reporneste_sunetul()
+
+    def _urmareste_iesirea(self):
+        """O dată pe secundă: dacă Windows a trecut pe altă ieșire (de exemplu căștile), mutăm și sunetul acolo."""
+        try:
+            ctypes.windll.ole32.CoInitializeEx(None, 0)
+        except Exception:
+            return
+        try:
+            self._iesire = _id_iesire_implicita()
+        except Exception:
+            self._iesire = ''
+        while self._synth is not None:
+            time.sleep(1.0)
+            try:
+                acum = _id_iesire_implicita()
+            except Exception:
+                continue
+            if acum and acum != self._iesire:
+                self._iesire = acum
+                time.sleep(0.3)                  # lăsăm Windows să termine schimbarea
+                try:
+                    self.reporneste_sunetul()
+                except Exception:
+                    pass
 
     def deschide(self):
         self.pregateste(True)
@@ -239,9 +334,9 @@ class SintetizatorFluid:
             self._f.fluid_synth_cc(self._synth, c, 7, 127)
 
     def schimba_instrument(self, prog):
+        """Instrumentul nou se aude de la nota următoare; notele ținute apăsate sună mai departe până le ridici."""
         if isinstance(prog, int):
             prog = (0, prog)
-        self.liniste()
         self.program = tuple(prog)
         self._selecteaza(self.program)
 
@@ -254,12 +349,24 @@ class SintetizatorFluid:
         self._selecteaza(self.program)
 
     def apasa(self, nota, tarie=110):
+        """Pornește nota; întoarce canalul, ca ridica() s-o oprească pe același canal chiar dacă între timp
+        s-a schimbat instrumentul."""
+        c = self._canal()
         if self._synth is not None and 0 <= nota <= 127:
-            self._f.fluid_synth_noteon(self._synth, self._canal(), nota, tarie)
+            self._f.fluid_synth_noteon(self._synth, c, nota, tarie)
+        return c
 
-    def ridica(self, nota):
+    def ridica(self, nota, canal=None):
         if self._synth is not None and 0 <= nota <= 127:
-            self._f.fluid_synth_noteoff(self._synth, self._canal(), nota)
+            self._f.fluid_synth_noteoff(self._synth, self._canal() if canal is None else canal, nota)
+
+    def cc(self, numar, valoare):
+        if self._synth is not None:
+            self._f.fluid_synth_cc(self._synth, self._canal(), numar, valoare)
+
+    def pitch_bend(self, val):
+        if self._synth is not None:
+            self._f.fluid_synth_pitch_bend(self._synth, self._canal(), max(0, min(16383, int(val))))
 
     def liniste(self):
         if self._synth is not None:

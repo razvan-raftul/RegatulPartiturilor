@@ -5,7 +5,25 @@ import os
 
 LIMBI = [('en', 'English'), ('ro', 'Română'), ('fr', 'Français'), ('de', 'Deutsch'), ('es', 'Español'), ('it', 'Italiano')]
 IMPLICIT = 'en'
-FIS_SETARI = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'Regatul Partiturilor', 'setari.json')
+
+
+def folder_setari():
+    """%APPDATA%\\Music Box. Dacă există doar folderul vechi (Regatul Partiturilor), îl redenumim; dacă nu se poate, îl folosim pe el."""
+    baza = os.environ.get('APPDATA', os.path.expanduser('~'))
+    nou, vechi = os.path.join(baza, 'Music Box'), os.path.join(baza, 'Regatul Partiturilor')
+    if os.path.isdir(nou):
+        return nou
+    if os.path.isdir(vechi):
+        try:
+            os.rename(vechi, nou)
+            return nou
+        except OSError:
+            return vechi
+    return nou
+
+
+DIR_SETARI = folder_setari()
+FIS_SETARI = os.path.join(DIR_SETARI, 'setari.json')
 
 
 def _limba_din_setari():
