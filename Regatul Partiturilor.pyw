@@ -23,12 +23,12 @@ import wx.lib.scrolledpanel as scrolled  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import limba  # noqa: E402
 from nucleu.limba import _  # noqa: E402
-from nucleu import VERSIUNE, actualizare, auz, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_pornire, sunete, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_pornire, sunete, voce  # noqa: E402
 
 NUME = 'Music Box'
 INDEMN = _('Nicio partitură deschisă. Deschide o partitură cu Control O.')
-# folderul setărilor păstrează numele vechi, ca setările să nu se piardă după schimbarea numelui
-DIR_SETARI = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'Regatul Partiturilor')
+# setările: %APPDATA%\\Music Box (folderul vechi „Regatul Partiturilor” se redenumește singur, vezi limba.folder_setari)
+DIR_SETARI = limba.DIR_SETARI
 FIS_SETARI = os.path.join(DIR_SETARI, 'setari.json')
 OCTAVE = [('fara', _('Fără octavă')), ('numere', _('Octava cu număr (do 4)')), ('nume', _('Octava cu nume (do din octava întâi)'))]
 FILTRU = (_('Toate partiturile|') + ';'.join('*' + e for e in partitura.TOATE_FORMATELE) +
@@ -68,7 +68,8 @@ Control plus 4: fila Scrie o partitură (scrii tu notele, pentru mâna dreaptă 
 În câmpurile mâinilor: Control plus Enter ascultă măsura pe care ești (ambele mâini), F2 spune pe ce măsură ești.
 Control plus 5: exerciții de auz (programul cântă o notă, un interval sau un acord și tu alegi ce ai auzit).
 Acolo: Alt plus E te duce la lista Răspunsuri, Enter răspunde, virgulă ascultă din nou, punct dă un exercițiu nou.
-Control plus 6: fila Setări (metronomul pornit sau oprit, volumul lui, instrumentul claviaturii, unde sunt programele de recunoaștere).
+Control plus 6: fila Setări (limba, metronomul și volumul lui, instrumentul claviaturii, clapa MIDI, întârzierea sunetului, unde sunt programele de recunoaștere).
+O clapă MIDI legată la calculator cântă cu sunetele programului, cu instrumentul claviaturii.
 
 Citește din fereastră (pentru aplicațiile editurilor, din care nu se poate descărca):
 Control plus Alt plus P, apăsat din aplicația editurii: citește pagina afișată acum.
@@ -76,9 +77,10 @@ Control plus Shift plus F: alegi fereastra dintr-o listă.
 Nu se salvează nimic: poza paginii se șterge imediat după recunoaștere.
 
 Claviatura (Control plus 3), cât stai în ea celelalte taste nu mai fac nimic:
-Rândul de jos, de la Shift stânga la 3 de pe blocul numeric: do, re, mi, fa, sol, la, si, do și tot așa, două octave.
-Deasupra lui, de la Caps Lock: do diez, re diez, S gol, fa diez, sol diez, la diez, H gol, și tot așa.
-La fel, cu o octavă mai jos: rândul de la Tab (până la 6 de pe blocul numeric) sunt notele, iar rândul cifrelor, de la tasta dinaintea lui 1, diezii (2 și 6 sunt goale).
+Rândul de jos, de la Z la 3 de pe blocul numeric: do, re, mi, fa, sol, la, si, do și tot așa, două octave.
+Diezii sunt pe rândul de deasupra, cu o tastă mai la dreapta: S do diez, D re diez, F gol, G fa diez, H sol diez, J la diez, K gol, și tot așa.
+La fel, cu o octavă mai jos: rândul de la Tab (până la 6 de pe blocul numeric) sunt notele, iar diezii sunt pe cifre, de la 1 (3, 7 și 0 sunt goale).
+Shift stânga e bender: cât îl ții apăsat, nota tremură.
 Săgeată dreapta sau stânga: o octavă mai sus sau mai jos (NVDA spune doar numărul octavei).
 Săgeată sus sau jos: alt instrument.
 Control plus săgeată dreapta sau stânga: transpui cu un semiton (ce era do se aude do diez).
@@ -123,6 +125,9 @@ class Fereastra(wx.Frame):
         self.metronom = bool(self.setari.get('metronom', False))
         self.volum_metronom = int(self.setari.get('metronom_volum', 60))
         self.sint = sunete.sintetizator()
+        if hasattr(self.sint, 'latenta'):
+            self.sint.latenta = self.setari.get('latenta', 'normala')
+        self.midi = midi_in.IntrareMidi(self.sint, transpunere=lambda: self.transpunere)
         # instrumentele, pe categorii; lista „plată” e pentru săgeată sus/jos din claviatură
         self.catalog = sunete.catalog()
         self.instrumente = [(cat, nume, prog) for cat, inst in self.catalog for nume, prog in inst]
@@ -135,6 +140,8 @@ class Fereastra(wx.Frame):
         self.do_clav = int(self.setari.get('octava_claviatura', 60))
         self.transpunere = int(self.setari.get('transpunere', 0))
         self._apasate = {}                   # tasta fizică -> nota care sună
+        self._vibrato = claviatura.Vibrato(self.sint)
+        self._bender_apasat = False
         self._midi_cache = (None, None, None)  # (selecția, MIDI la 100%, bătăile): nu se mai face din nou la fiecare tempo
         self._redat = None                   # (selecția, procentul, metronomul) cu care se cântă acum
         self._tempo_amanat = None
@@ -304,6 +311,18 @@ class Fereastra(wx.Frame):
         # arbore: categoriile sunt „foldere”; spațiu le deschide și le închide, spațiu sau Enter pe un instrument îl alege
         self.s_instrument, self._noduri_instr = self._arbore_instrumente(ps, _('Instrumentul claviaturii'))
         ss.Add(self.s_instrument, 0, wx.EXPAND | wx.ALL, 6)
+        ss.Add(wx.StaticText(ps, label=_('Clapa MIDI (cânți pe ea cu sunetele programului)')), 0, wx.LEFT | wx.TOP, 6)
+        self.s_midi = wx.Choice(ps, name=_('Clapa MIDI'))
+        ss.Add(self.s_midi, 0, wx.EXPAND | wx.ALL, 6)
+        b_midi = wx.Button(ps, label=_('Caută din nou clapele MIDI'))
+        b_midi.Bind(wx.EVT_BUTTON, lambda e: self._umple_midi(anunta=True))
+        ss.Add(b_midi, 0, wx.ALL, 6)
+        ss.Add(wx.StaticText(ps, label=_('Întârzierea sunetului')), 0, wx.LEFT | wx.TOP, 6)
+        self._latente = ['mica', 'normala', 'sigura']
+        self.s_latenta = wx.Choice(ps, name=_('Întârzierea sunetului'),
+                                   choices=[_('Mică (se poate auzi un mic pârâit)'), _('Normală'), _('Mare (fără pârâit, și pe calculatoare încete)')])
+        self.s_latenta.SetSelection(self._latente.index(self.setari.get('latenta', 'normala')) if self.setari.get('latenta') in self._latente else 1)
+        ss.Add(self.s_latenta, 0, wx.ALL, 6)
         for cheie, text in (('audiveris', _('Unde e instalat Audiveris (pentru PDF și poze)...')),
                             ('musescore', _('Unde e instalat MuseScore (pentru fișiere MuseScore)...')),
                             ('homr', _('Unde e instalat homr (al doilea program de recunoaștere)...'))):
@@ -314,6 +333,9 @@ class Fereastra(wx.Frame):
         ps.SetupScrolling(scroll_x=False)
         self.carte.AddPage(ps, _('Setări'))
         self.s_limba.Bind(wx.EVT_CHOICE, self._schimba_limba)
+        self.s_midi.Bind(wx.EVT_CHOICE, lambda e: self._alege_midi())
+        self.s_latenta.Bind(wx.EVT_CHOICE, lambda e: self._alege_latenta())
+        self._umple_midi()
         self.s_sunet.Bind(wx.EVT_CHECKBOX, self._sunet_pornire_schimbat)
         self.s_metronom.Bind(wx.EVT_CHECKBOX, lambda e: self.comuta_metronom(self.s_metronom.GetValue()))
         self.s_volum.Bind(wx.EVT_SPINCTRL, lambda e: self._volum_din_setari())
@@ -824,7 +846,67 @@ class Fereastra(wx.Frame):
                 self.sint.pregateste(True)
             except Exception:
                 traceback.print_exc()
+            wx.CallAfter(self._porneste_midi)
         threading.Thread(target=lucru, daemon=True).start()
+
+    # ---------------- clapa MIDI și întârzierea ----------------
+    def _umple_midi(self, anunta=False):
+        nume = midi_in.dispozitive()
+        self._midi_nume = nume
+        self.s_midi.Set([_('Fără clapă MIDI')] + nume)
+        dorit = self.setari.get('midi_clapa')          # None = prima găsită; '' = fără
+        if self.midi.deschisa() and self.midi.nume in nume:
+            self.s_midi.SetSelection(nume.index(self.midi.nume) + 1)
+        elif dorit is None and nume:
+            self.s_midi.SetSelection(1)
+        elif dorit in nume:
+            self.s_midi.SetSelection(nume.index(dorit) + 1)
+        else:
+            self.s_midi.SetSelection(0)
+        if anunta:
+            text = _('Clape MIDI găsite: {0}.', len(nume)) if nume else _('Nu e legată nicio clapă MIDI.')
+            self.SetStatusText(text)
+            voce.spune(text, intrerupe=True)
+            self._porneste_midi()
+
+    def _porneste_midi(self):
+        """Deschide clapa MIDI aleasă (sau prima, dacă nu ai ales), după ce sunetele sunt gata."""
+        k = self.s_midi.GetSelection()
+        if k <= 0 or k - 1 >= len(self._midi_nume):
+            self.midi.inchide()
+            return
+        nume = self._midi_nume[k - 1]
+        if self.midi.deschisa() and self.midi.nume == nume:
+            return
+        try:
+            self.sint.deschide()
+        except Exception as ex:
+            self.SetStatusText(str(ex))
+            return
+        if self.midi.deschide(nume):
+            self.SetStatusText(_('Clapa MIDI: {0}.', nume))
+        else:
+            self.SetStatusText(_('Clapa MIDI {0} nu s-a putut deschide. Poate o folosește alt program.', nume))
+
+    def _alege_midi(self):
+        k = self.s_midi.GetSelection()
+        self.setari['midi_clapa'] = '' if k <= 0 else self._midi_nume[k - 1]
+        scrie_setari(self.setari)
+        self._porneste_midi()
+        if k <= 0:
+            voce.spune(_('Fără clapă MIDI.'), intrerupe=True)
+        elif self.midi.deschisa():
+            voce.spune(_('Clapa MIDI: {0}.', self.midi.nume), intrerupe=True)
+
+    def _alege_latenta(self):
+        lat = self._latente[max(0, self.s_latenta.GetSelection())]
+        self.setari['latenta'] = lat
+        scrie_setari(self.setari)
+        if hasattr(self.sint, 'seteaza_latenta'):
+            try:
+                self.sint.seteaza_latenta(lat)
+            except Exception as ex:
+                self.SetStatusText(str(ex))
 
     def _inchide_sint_daca_liber(self):
         if wx.Window.FindFocus() is not self.t_clav and self.carte.GetSelection() != 4:
@@ -1310,7 +1392,7 @@ class Fereastra(wx.Frame):
         nume = self.instrumente[self.instrument][1]
         o = claviatura.nume_octava(self.do_clav)
         tr = _('transpus {0:+d} semitonuri', self.transpunere) if self.transpunere else 'netranspus'
-        self.t_clav.SetValue(_('Claviatura. Instrument: {0}. Shift stânga e do {1}, {2}.\nRândul de jos, de la Shift stânga la 3 de pe blocul numeric: do, re, mi și tot așa, două octave. Deasupra lui, de la Caps Lock: do diez, re diez, S gol, fa diez, sol diez, la diez, H gol, și tot așa. Rândul de la Tab și rândul cifrelor sunt la fel, cu o octavă mai jos.\nSăgeată dreapta sau stânga: octava. Săgeată sus sau jos: instrumentul. Control săgeată dreapta sau stânga: transpui cu un semiton. Escape: ieși.', nume, o, tr))
+        self.t_clav.SetValue(_('Claviatura. Instrument: {0}. Z e do {1}, {2}.\nRândul de jos, de la Z la 3 de pe blocul numeric: do, re, mi și tot așa, două octave. Diezii sunt deasupra, cu o tastă mai la dreapta: S do diez, D re diez, F gol, G fa diez, și tot așa. Rândul de la Tab și cifrele de la 1 sunt la fel, cu o octavă mai jos. Shift stânga face nota să tremure.\nSăgeată dreapta sau stânga: octava. Săgeată sus sau jos: instrumentul. Control săgeată dreapta sau stânga: transpui cu un semiton. Escape: ieși.', nume, o, tr))
         self.t_clav.SetInsertionPoint(0)
 
     def _clav_intra(self, e):
@@ -1325,6 +1407,9 @@ class Fereastra(wx.Frame):
 
     def _clav_iese(self, e):
         self._apasate.clear()
+        if self._bender_apasat:
+            self._bender_apasat = False
+            self._vibrato.opreste()
         self.sint.elibereaza()           # eliberează sintetizatorul Windows pentru redarea piesei
         e.Skip()
 
@@ -1359,28 +1444,36 @@ class Fereastra(wx.Frame):
             self.schimba_instrument(1 if sageata == 'jos' else -1)
             return
         sc = self._sc(e)
+        if sc == claviatura.TASTA_BENDER:
+            if not self._bender_apasat:            # Shift stânga: nota tremură cât îl ții (fără repetări)
+                self._bender_apasat = True
+                self._vibrato.porneste()
+            return
         if sc in claviatura.TASTE and sc not in self._apasate:
             nota = self.do_clav + claviatura.TASTE[sc] + self.transpunere
-            self._apasate[sc] = nota
             if not self.sint.deschis():
                 try:
                     self.sint.program = self.instrumente[self.instrument][2]
                     self.sint.deschide()
                 except Exception as ex:
                     self.SetStatusText(str(ex))
-            self.sint.apasa(nota)
+            # se ține minte nota și canalul: dacă schimbi octava sau instrumentul cât ții tasta, nota sună până o ridici
+            self._apasate[sc] = (nota, self.sint.apasa(nota))
         # orice altă tastă (litere, cifre, Tab, Enter...) nu face nimic aici
 
     def _clav_ridica(self, e):
         sc = self._sc(e)
-        nota = self._apasate.pop(sc, None)
-        if nota is not None:
-            self.sint.ridica(nota)
+        tinuta = self._apasate.pop(sc, None)
+        if tinuta is not None:
+            self.sint.ridica(*tinuta)
         if e.GetKeyCode() == wx.WXK_SHIFT:   # la Shift, Windows nu spune mereu care dintre ele: le oprim pe amândouă
+            if self._bender_apasat and sc != 0x36:
+                self._bender_apasat = False
+                self._vibrato.opreste()
             for t in (0x2A, 0x36):
                 n2 = self._apasate.pop(t, None)
                 if n2 is not None:
-                    self.sint.ridica(n2)
+                    self.sint.ridica(*n2)
 
     @staticmethod
     def _sc(e):
@@ -1494,26 +1587,37 @@ class Fereastra(wx.Frame):
             w = w.GetParent()
         return False
 
+    # controalele prin care trece Tab; panourile (și cele care se derulează) doar se parcurg, nu primesc ele cursorul
+    _TIPURI_TAB = (wx.TextCtrl, wx.ListBox, wx.Choice, wx.CheckBox, wx.Button, wx.SpinCtrl, wx.TreeCtrl, wx.ListCtrl,
+                   wx.ComboBox, wx.RadioButton, wx.Slider)
+
     def _tab_in_pagina(self, pag, foc, inapoi):
+        """Tab în fila deschisă: de la un element la următorul, iar de la ultimul înapoi la primul."""
         elemente = []
 
         def aduna(w):
             for c in w.GetChildren():
                 if not c.IsShown():
                     continue
-                if isinstance(c, (wx.Panel, wx.StaticBox)) and not c.AcceptsFocusFromKeyboard():
+                if isinstance(c, self._TIPURI_TAB):
+                    if c.IsEnabled():
+                        elemente.append(c)
+                elif isinstance(c, (wx.Panel, wx.StaticBox, wx.ScrolledWindow)):
                     aduna(c)
-                elif c.IsEnabled() and c.AcceptsFocusFromKeyboard() and not isinstance(c, wx.StaticText):
-                    elemente.append(c)
         aduna(pag)
         if not elemente:
             return
         cur = foc
-        while cur is not None and cur not in elemente:
+        while cur is not None and not any(cur is x for x in elemente):
             cur = cur.GetParent()
-        i = elemente.index(cur) if cur in elemente else -1
+        i = next((k for k, x in enumerate(elemente) if x is cur), -1)
         urm = elemente[(i + (-1 if inapoi else 1)) % len(elemente)]
+        if urm is foc or len(elemente) == 1:
+            # un singur element în filă: cursorul rămâne, dar spunem unde e, ca să nu pară că nu s-a întâmplat nimic
+            voce.spune(urm.GetName(), intrerupe=True)
         urm.SetFocus()
+        if isinstance(pag, scrolled.ScrolledPanel):
+            pag.ScrollChildIntoView(urm)
 
     def _taste(self, e):
         """Tastele de redare, prinse direct din tastatură (după tasta fizică, oricare ar fi aranjarea tastaturii):
@@ -1522,6 +1626,21 @@ class Fereastra(wx.Frame):
         foc = wx.Window.FindFocus()
         if foc is self.t_clav:
             self._clav_apasa(e)
+            return
+        # arborii de instrumente: spațiu deschide sau închide o categorie, spațiu sau Enter alege un instrument
+        # (prins aici, pentru că tasta nu ajunge sigur la arbore pe Windows)
+        if foc is not None and foc in (self.s_instrument, self.a_instr) and not e.AltDown() and not e.ControlDown() \
+                and e.GetKeyCode() in (wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            alege = self._alege_din_arbore if foc is self.s_instrument else self._alege_sunet_auz
+            it = foc.GetSelection()
+            if it.IsOk():
+                if foc.ItemHasChildren(it):
+                    if foc.IsExpanded(it):
+                        foc.Collapse(it)
+                    else:
+                        foc.Expand(it)
+                else:
+                    alege(it)
             return
         # Tab și Shift Tab trec doar prin elementele filei deschise, nu și prin cele din stânga sau din alte file
         if e.GetKeyCode() == wx.WXK_TAB and not e.ControlDown() and not e.AltDown() and foc is not None:
@@ -1802,6 +1921,7 @@ class Fereastra(wx.Frame):
 
     def la_inchidere(self, e):
         self.redare.opreste()
+        self.midi.inchide()
         self.sint.inchide()
         if getattr(self, '_ciorna_amanata', None):
             self._ciorna_amanata.Stop()
@@ -1952,6 +2072,7 @@ def autotest(fisier, iesire):
             sf.inchide()
         except Exception as ex:
             rez.append(f'SUNETE eroare: {ex} exista={sunete.exista()}')
+        rez.append(f'MIDI clape {len(midi_in.dispozitive())}, setari {DIR_SETARI}')
         from nucleu import traduceri
         rez.append(f'LIMBA {limba.LIMBA}, traduceri {len(traduceri.T)}, en: {traduceri.T["Setări"]["en"]}')
         b_met = redare.batai(P.extrage(P.numere[0], P.numere[0] + 3, [0]))

@@ -1,4 +1,4 @@
-﻿; Program de instalare pentru Regatul Partiturilor (Inno Setup 6)
+﻿; Program de instalare pentru Music Box (fostul Regatul Partiturilor) (Inno Setup 6)
 ; Se instalează doar pentru utilizatorul curent, fără drepturi de administrator,
 ; ca actualizarea automată să poată înlocui fișierele fără întrebări.
 
@@ -21,6 +21,8 @@ AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Răzvan
 DefaultDirName={autopf}\{#AppName}
+; mereu în folderul „Music Box”; folderul vechi „Regatul Partiturilor” se mută aici (vezi MutaFolderulVechi)
+UsePreviousAppDir=no
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -72,7 +74,7 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Pornește Regatul Partiturilor acum"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "Music Box"; Flags: nowait postinstall skipifsilent
 ; la actualizarea automată (instalare fără ferestre) aplicația se redeschide singură
 Filename: "{app}\{#AppExe}"; Parameters: "--actualizat"; Flags: nowait; Check: IsAutoUpdate
 
@@ -115,7 +117,8 @@ var
   S: AnsiString;
   T: String;
 begin
-  if LoadStringFromFile(ExpandConstant('{userappdata}\Regatul Partiturilor\setari.json'), S) then
+  if LoadStringFromFile(ExpandConstant('{userappdata}\Music Box\setari.json'), S) or
+     LoadStringFromFile(ExpandConstant('{userappdata}\Regatul Partiturilor\setari.json'), S) then
   begin
     T := String(S);
     Result := 'en';
@@ -257,10 +260,36 @@ begin
   ParteaCurenta := ParteaCurenta + 1;
 end;
 
+{ Programul stătea în folderul „Regatul Partiturilor”. Componentele (homr, Audiveris, MuseScore, sute de MB)
+  se mută în folderul nou, ca să nu se descarce din nou; la final folderul vechi se șterge. }
+procedure MutaFolderulVechi;
+var
+  Vechi, Nou: String;
+begin
+  Vechi := ExpandConstant('{autopf}\{#NumeVechi}');
+  Nou := ExpandConstant('{app}');
+  if (CompareText(Vechi, Nou) <> 0) and DirExists(Vechi + '\componente') and not DirExists(Nou + '\componente') then
+  begin
+    ForceDirectories(Nou);
+    if not RenameFile(Vechi + '\componente', Nou + '\componente') then
+      Log('Componentele nu s-au putut muta din folderul vechi.');
+  end;
+end;
+
+procedure StergeFolderulVechi;
+var
+  Vechi: String;
+begin
+  Vechi := ExpandConstant('{autopf}\{#NumeVechi}');
+  if (CompareText(Vechi, ExpandConstant('{app}')) <> 0) and DirExists(Vechi) then
+    DelTree(Vechi, True, True, True);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
   begin
+    MutaFolderulVechi;
     if IsAutoUpdate then
       Inceput := 50
     else
@@ -272,6 +301,7 @@ begin
   end;
   if CurStep = ssPostInstall then
   begin
+    StergeFolderulVechi;
     SpuneProcent(80);
     PartiComponente := 0;
     ParteaCurenta := 0;
