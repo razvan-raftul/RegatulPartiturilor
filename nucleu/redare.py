@@ -357,6 +357,22 @@ class Redare:
                         self.la_sfarsit()
                     return
 
+    def terminat(self) -> bool:
+        """Adevărat dacă piesa a ajuns la sfârșit, chiar dacă urmărirea n-a observat încă (atunci K o ia de la capăt)."""
+        if self.stare == 'oprit':
+            return True
+        if os.name != 'nt':
+            return False
+        try:
+            mod = self._mci(f'status {_ALIAS} mode')
+            poz = int(self._mci(f'status {_ALIAS} position') or 0)
+            lung = int(self._mci(f'status {_ALIAS} length') or 0)
+        except Exception:
+            return True
+        if self.stare == 'canta' and mod not in ('playing', 'seeking'):
+            return True
+        return lung > 0 and poz >= lung - 30
+
     def pauza_continua(self) -> str:
         if self.stare == 'canta':
             self._mci(f'pause {_ALIAS}')
