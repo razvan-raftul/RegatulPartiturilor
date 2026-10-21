@@ -14,6 +14,7 @@ import threading
 from dataclasses import dataclass
 
 from . import verificare
+from .limba import _
 
 SETARI = {'audiveris': '', 'musescore': '', 'homr': ''}   # căi alese manual (le completează fereastra din setări)
 
@@ -88,12 +89,12 @@ def _ruleaza(cmd, timeout, env=None):
 def din_musescore(cale: str) -> str:
     exe = gaseste_musescore()
     if not exe:
-        raise LipsaProgram('Nu găsesc MuseScore, de care e nevoie pentru fișierele .mscz. De obicei vine odată cu programul; '
-                           'reinstalează Regatul Partiturilor cu internetul pornit, sau alege MuseScore din meniul Setări.')
+        raise LipsaProgram(_('Nu găsesc MuseScore, de care e nevoie pentru fișierele .mscz. De obicei vine odată cu programul; '
+                           'reinstalează Music Box cu internetul pornit, sau alege MuseScore din fila Setări.'))
     out = os.path.join(tempfile.mkdtemp(prefix='regatul-partiturilor-'), 'partitura.musicxml')
     r = _ruleaza([exe, '-o', out, cale], 300)
     if not os.path.isfile(out):
-        raise LipsaProgram('MuseScore nu a putut converti fișierul. ' + (r.stderr or '')[-300:])
+        raise LipsaProgram(_('MuseScore nu a putut converti fișierul. ') + (r.stderr or '')[-300:])
     return out
 
 
@@ -134,7 +135,7 @@ def _audiveris(exe, cale, dest):
     r = _ruleaza([exe, '-batch', '-export', '-output', dest, '--', cale], 3600, env=env)
     gasite = sorted(glob.glob(os.path.join(dest, baza + '*.mxl')) + glob.glob(os.path.join(dest, baza, baza + '*.mxl')))
     if not gasite:
-        raise RuntimeError('Audiveris nu a recunoscut nimic. ' + (r.stdout or '')[-200:])
+        raise RuntimeError(_('Audiveris nu a recunoscut nimic. ') + (r.stdout or '')[-200:])
     from music21 import converter
     return verificare.uneste_pagini([converter.parse(f) for f in gasite])
 
@@ -147,7 +148,7 @@ def _homr(exe, cale, lucru):
     r = _ruleaza([exe, '--no-title', copie], 3600)
     gasite = sorted(glob.glob(os.path.join(d, '*.musicxml')))
     if not gasite:
-        raise RuntimeError('homr nu a recunoscut nimic. ' + (r.stderr or '')[-200:])
+        raise RuntimeError(_('homr nu a recunoscut nimic. ') + (r.stderr or '')[-200:])
     from music21 import converter
     return verificare.uneste_pagini([converter.parse(f) for f in gasite])
 
@@ -187,11 +188,11 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
     motoare = [('homr', gaseste_homr(), _homr), ('Audiveris', gaseste_audiveris(), _audiveris)]
     motoare = [m for m in motoare if m[1]]
     if not motoare:
-        raise LipsaProgram('Nu găsesc programele de recunoaștere (homr și Audiveris). De obicei vin odată cu programul; '
-                           'reinstalează Regatul Partiturilor cu internetul pornit.')
+        raise LipsaProgram(_('Nu găsesc programele de recunoaștere (homr și Audiveris). De obicei vin odată cu programul; '
+                           'reinstalează Music Box cu internetul pornit.'))
     lucru = tempfile.mkdtemp(prefix='regatul-partiturilor-')
     if progres:
-        progres(f'Recunosc partitura cu {" și ".join(m[0] for m in motoare)}. Poate dura câteva minute pentru fiecare pagină.')
+        progres(_('Recunosc partitura cu {0}. Poate dura câteva minute pentru fiecare pagină.', " și ".join(m[0] for m in motoare)))
     rezultate, probleme = {}, []
 
     def ruleaza(nume, exe, f):
@@ -209,8 +210,8 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
         t.join()
     try:
         if not rezultate:
-            raise LipsaProgram('Programele de recunoaștere nu au reușit să citească partitura. Încearcă un PDF mai clar '
-                               'sau o scanare la 300 dpi. ' + ' '.join(probleme)[-400:])
+            raise LipsaProgram(_('Programele de recunoaștere nu au reușit să citească partitura. Încearcă un PDF mai clar '
+                               'sau o scanare la 300 dpi. ') + ' '.join(probleme)[-400:])
         ordine = {n: rezultate[n] for n, _, _ in motoare if n in rezultate}
         rez = verificare.combina(ordine)
         _metadate(rez.scor, baza)
@@ -218,8 +219,8 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
         # mâna stângă scrisă pe portativul de sus (sau dreapta pe cel de jos): o despărțim de cealaltă mână
         mutate = verificare.imparte_mainile(rez.scor)
         for nr in mutate:
-            motiv = ('ambele mâini erau scrise pe același portativ; am dat mâinii drepte nota de sus '
-                     'și mâinii stângi pe cea de jos')
+            motiv = (_('ambele mâini erau scrise pe același portativ; am dat mâinii drepte nota de sus '
+                     'și mâinii stângi pe cea de jos'))
             nes[nr] = (nes[nr] + '; ' + motiv) if nr in nes else motiv
         if mutate:
             rez.sigure = max(0, rez.sigure - sum(1 for nr in mutate if nr not in dict(rez.nesigure)))
@@ -254,6 +255,6 @@ def _citeste_raport(cale) -> dict:
         with open(cale, encoding='utf-8') as f:
             for linie in f:
                 if linie.startswith('Măsura '):
-                    nr, _, motiv = linie[7:].partition(':')
+                    nr, _x, motiv = linie[7:].partition(':')
                     nes[int(nr)] = motiv.strip()
     return nes

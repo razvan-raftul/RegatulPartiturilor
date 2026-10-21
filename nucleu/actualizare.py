@@ -8,6 +8,7 @@ import tempfile
 import urllib.request
 
 from . import VERSIUNE
+from .limba import _
 
 DEPOZIT = 'razvan-raftul/RegatulPartiturilor'
 BAZA = f'https://github.com/{DEPOZIT}/releases/download/latest/'
@@ -60,7 +61,7 @@ def descarca_setup(versiune, progres=None) -> str:
                 progres(descarcat, total)
     if descarcat < 1_000_000 or (total and descarcat != total):
         os.remove(cale + '.part')
-        raise IOError('Descărcarea nu s-a terminat întreagă.')
+        raise IOError(_('Descărcarea nu s-a terminat întreagă.'))
     os.replace(cale + '.part', cale)
     return cale
 

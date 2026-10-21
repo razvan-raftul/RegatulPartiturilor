@@ -6,6 +6,7 @@ import os
 import tempfile
 
 import wx
+from .limba import _
 
 
 def dpi_constient():
@@ -29,7 +30,7 @@ def ferestre():
     rez = []
     PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
 
-    def f(hwnd, _):
+    def f(hwnd, _x):
         if user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
             n = user32.GetWindowTextLengthW(hwnd)
             if n:
@@ -74,7 +75,7 @@ def poza(hwnd) -> str:
     """Poza ferestrei (care trebuie să fie în față), mărită de două ori dacă e mică. Întoarce calea unui PNG temporar."""
     x, y, w, h = dreptunghi(hwnd)
     if w < 50 or h < 50:
-        raise RuntimeError('Fereastra e prea mică sau e ascunsă.')
+        raise RuntimeError(_('Fereastra e prea mică sau e ascunsă.'))
     ecran = wx.ScreenDC()
     bmp = wx.Bitmap(w, h)
     mem = wx.MemoryDC(bmp)
@@ -82,7 +83,7 @@ def poza(hwnd) -> str:
     mem.SelectObject(wx.NullBitmap)
     img = bmp.ConvertToImage()
     if _aproape_uniforma(img):
-        raise RuntimeError('Poza a ieșit goală sau neagră. Probabil aplicația aceasta nu permite poze ale ecranului.')
+        raise RuntimeError(_('Poza a ieșit goală sau neagră. Probabil aplicația aceasta nu permite poze ale ecranului.'))
     if h < 2000:
         img = img.Scale(w * 2, h * 2, wx.IMAGE_QUALITY_HIGH)
     d = tempfile.mkdtemp(prefix='regatul-fereastra-')

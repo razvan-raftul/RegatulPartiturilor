@@ -2,21 +2,22 @@
 și tu alegi ce ai auzit. Partea aceasta nu știe de ferestre; fereastra cântă pașii și arată întrebările."""
 import random
 from dataclasses import dataclass, field
+from .limba import _
 
-SOLFEGIU = ['Do', 'Do diez', 'Re', 'Mi bemol', 'Mi', 'Fa', 'Fa diez', 'Sol', 'Sol diez', 'La', 'Si bemol', 'Si']
-LITERE = ['C', 'C diez', 'D', 'E bemol', 'E', 'F', 'F diez', 'G', 'G diez', 'A', 'B bemol', 'B']
+SOLFEGIU = [_('Do'), _('Do diez'), _('Re'), _('Mi bemol'), _('Mi'), _('Fa'), _('Fa diez'), _('Sol'), _('Sol diez'), _('La'), _('Si bemol'), _('Si')]
+LITERE = [_('C'), _('C diez'), _('D'), _('E bemol'), _('E'), _('F'), _('F diez'), _('G'), _('G diez'), _('A'), _('B bemol'), _('B')]
 
-INTERVALE = ['Primă perfectă', 'Secundă mică', 'Secundă mare', 'Terță mică', 'Terță mare', 'Cvartă perfectă',
-             'Triton', 'Cvintă perfectă', 'Sextă mică', 'Sextă mare', 'Septimă mică', 'Septimă mare', 'Octavă perfectă']
-REDARE_INTERVAL = ['Melodic ascendent', 'Melodic descendent', 'Armonic']
+INTERVALE = [_('Primă perfectă'), _('Secundă mică'), _('Secundă mare'), _('Terță mică'), _('Terță mare'), _('Cvartă perfectă'),
+             _('Triton'), _('Cvintă perfectă'), _('Sextă mică'), _('Sextă mare'), _('Septimă mică'), _('Septimă mare'), _('Octavă perfectă')]
+REDARE_INTERVAL = [_('Melodic ascendent'), _('Melodic descendent'), _('Armonic')]
 
-ACORDURI = [('Major', [0, 4, 7]), ('Minor', [0, 3, 7]), ('Micșorat', [0, 3, 6]), ('Mărit', [0, 4, 8]),
-            ('Major 7', [0, 4, 7, 11]), ('Dominant 7', [0, 4, 7, 10]), ('Minor 7', [0, 3, 7, 10]),
-            ('Minor major 7', [0, 3, 7, 11]), ('Semidiminuat 7', [0, 3, 6, 10]), ('Diminuat 7', [0, 3, 6, 9])]
-RASTURNARI = ['Poziție fundamentală', 'Răsturnarea I', 'Răsturnarea II', 'Răsturnarea III']
+ACORDURI = [(_('Major'), [0, 4, 7]), (_('Minor'), [0, 3, 7]), (_('Micșorat'), [0, 3, 6]), (_('Mărit'), [0, 4, 8]),
+            (_('Major 7'), [0, 4, 7, 11]), (_('Dominant 7'), [0, 4, 7, 10]), (_('Minor 7'), [0, 3, 7, 10]),
+            (_('Minor major 7'), [0, 3, 7, 11]), (_('Semidiminuat 7'), [0, 3, 6, 10]), (_('Diminuat 7'), [0, 3, 6, 9])]
+RASTURNARI = [_('Poziție fundamentală'), _('Răsturnarea I'), _('Răsturnarea II'), _('Răsturnarea III')]
 
-EXERCITII = ['Note', 'Intervale', 'Acorduri']
-IZOLARE = ['Toate la fel de des', 'Mai des cele bifate', 'Doar cele bifate']
+EXERCITII = [_('Note'), _('Intervale'), _('Acorduri')]
+IZOLARE = [_('Toate la fel de des'), _('Mai des cele bifate'), _('Doar cele bifate')]
 
 
 @dataclass
@@ -29,9 +30,11 @@ class Setari:
     intervale_bifate: list = field(default_factory=list)   # 0–12 semitonuri
     redare_interval: int = 0
     acorduri_bifate: list = field(default_factory=list)    # indici în ACORDURI
+    intreaba_tipul: bool = True        # la acorduri: ce întrebări se pun (cel puțin una)
     rasturnari: bool = False
     fundamentala: bool = False
     greseli_pana_la_raspuns: int = 2
+    instrument: list = field(default_factory=lambda: [0, 0])   # (bancă, program); implicit pian
 
 
 @dataclass
@@ -81,8 +84,8 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
         o = rnd.choice(octave)
         midi = 12 * (o + 1) + pc
         et, idx = _optiuni(numele, s.note_bifate, s.izolare)
-        return Exercitiu([Intrebare('Ascultă nota și alege răspunsul corect.', et, idx.index(pc))],
-                         [([midi], 1200, 0)], f'Nota este {numele[pc]} în octava {o}.')
+        return Exercitiu([Intrebare(_('Ascultă nota și alege răspunsul corect.'), et, idx.index(pc))],
+                         [([midi], 1200, 0)], _('Nota este {0} în octava {1}.', numele[pc], o))
     if s.exercitiu == 1:
         st = _alege(13, s.intervale_bifate, s.izolare, rnd)
         o = rnd.choice(octave)
@@ -95,8 +98,8 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
         else:
             pasi = [([jos, sus], 1600, 0)]
         et, idx = _optiuni(INTERVALE, s.intervale_bifate, s.izolare)
-        return Exercitiu([Intrebare('Ascultă intervalul și alege denumirea corectă.', et, idx.index(st))], pasi,
-                         f'Intervalul era {INTERVALE[st].lower()}, de la {numele[jos % 12]}.')
+        return Exercitiu([Intrebare(_('Ascultă intervalul și alege denumirea corectă.'), et, idx.index(st))], pasi,
+                         _('Intervalul era {0}, de la {1}.', INTERVALE[st], numele[jos % 12]))
     # acorduri
     k = _alege(len(ACORDURI), s.acorduri_bifate, s.izolare, rnd)
     nume, structura = ACORDURI[k]
@@ -105,16 +108,21 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
     rad = 12 * (o + 1) + rad_pc
     note_ = [rad + x for x in structura]
     inv = rnd.randrange(len(structura)) if s.rasturnari else 0
-    for _ in range(inv):
+    for _x in range(inv):
         note_ = note_[1:] + [note_[0] + 12]
     et, idx = _optiuni([a[0] for a in ACORDURI], s.acorduri_bifate, s.izolare)
-    intrebari = [Intrebare('Ascultă acordul și alege tipul corect.', et, idx.index(k))]
+    intrebari = []
+    tipul = s.intreaba_tipul or not (s.rasturnari or s.fundamentala)
+    if tipul:
+        intrebari.append(Intrebare(_('Ascultă acordul și alege tipul corect.'), et, idx.index(k)))
     if s.rasturnari:
-        intrebari.append(Intrebare('Alege răsturnarea.', RASTURNARI[:len(structura)], inv))
+        intrebari.append(Intrebare(_('Alege răsturnarea.') if intrebari else _('Ascultă acordul și alege răsturnarea.'),
+                                   RASTURNARI[:len(structura)], inv))
     if s.fundamentala:
-        intrebari.append(Intrebare('Alege fundamentala acordului.', list(numele), rad_pc))
+        intrebari.append(Intrebare(_('Alege fundamentala acordului.') if intrebari else _('Ascultă acordul și alege fundamentala.'),
+                                   list(numele), rad_pc))
     pasi = [(note_, 1600, 250)] + [([n], 350, 0) for n in note_] + [(note_, 1400, 0)]
-    descriere = f'Acordul era {nume} pe {numele[rad_pc]}' + (f', {RASTURNARI[inv]}' if s.rasturnari else '') + '.'
+    descriere = _('Acordul era {0} pe {1}', nume, numele[rad_pc]) + (f', {RASTURNARI[inv]}' if s.rasturnari else '') + '.'
     return Exercitiu(intrebari, pasi, descriere)
 
 
@@ -123,7 +131,7 @@ class Scor:
         self.corecte = self.gresite = self.serie = self.total = 0
 
     def text(self):
-        return f'Corecte: {self.corecte}, greșite: {self.gresite}, serie: {self.serie}, total: {self.total}.'
+        return _('Corecte: {0}, greșite: {1}, serie: {2}, total: {3}.', self.corecte, self.gresite, self.serie, self.total)
 
 
 class Sesiune:
@@ -135,6 +143,7 @@ class Sesiune:
         self.ex = None
         self.pas = 0
         self.greseli = 0
+        self.ultimul = ''           # ce a fost ultimul răspuns: corect, urmatoarea, gresit, aratat
 
     def nou(self, rnd=random):
         self.ex = genereaza(self.setari, rnd)
@@ -152,16 +161,18 @@ class Sesiune:
         """Întoarce (mesaj, gata): gata = exercițiul s-a terminat (corect sau cu răspunsul arătat)."""
         q = self.intrebare
         if q is None:
-            return 'Începe un exercițiu nou.', True
+            return _('Începe un exercițiu nou.'), True
         if i == q.corect:
             self.pas += 1
             if self.pas < len(self.ex.intrebari):
-                return 'Corect. ' + self.intrebare.text, False
+                self.ultimul = 'urmatoarea'
+                return _('Corect. ') + self.intrebare.text, False
             if self.greseli == 0:
                 self.scor.corecte += 1
                 self.scor.serie += 1
             self.scor.total += 1
-            return 'Răspuns corect.', True
+            self.ultimul = 'corect'
+            return _('Răspuns corect.'), True
         self.greseli += 1
         if self.greseli == 1:
             self.scor.gresite += 1
@@ -170,5 +181,7 @@ class Sesiune:
             corect = q.optiuni[q.corect]
             self.scor.total += 1
             self.pas = len(self.ex.intrebari)
-            return f'Răspuns greșit. Răspunsul corect era {corect}. {self.ex.descriere}', True
-        return 'Răspuns greșit. Mai încearcă.', False
+            self.ultimul = 'aratat'
+            return _('Răspuns greșit. Răspunsul corect era {0}. {1}', corect, self.ex.descriere), True
+        self.ultimul = 'gresit'
+        return _('Răspuns greșit. Mai încearcă.'), False

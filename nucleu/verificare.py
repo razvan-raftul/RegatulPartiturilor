@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 from music21 import chord, meter, note, stream
+from .limba import _
 
 # ---------------------------------------------------------------- note dintr-o măsură
 
@@ -105,15 +106,15 @@ def _verifica_durate(masuri):
                 prea_scurta = d < L and 0 < i < len(masuri) - 1
                 if d > L or prea_scurta:
                     M.durata_ok = False
-                    M.probleme.append(f'portativul {k + 1}: notele dau {_text_durata(d)} în loc de {_text_durata(L)}')
+                    M.probleme.append(_('portativul {0}: notele dau {1} în loc de {2}', k + 1, _text_durata(d), _text_durata(L)))
                     break
 
 
 def _text_durata(q: Fraction) -> str:
     patrimi = q
     if patrimi.denominator == 1:
-        return f'{patrimi.numerator} pătrimi'
-    return f'{float(patrimi):.2f} pătrimi'
+        return _('{0} pătrimi', patrimi.numerator)
+    return _('{0:.2f} pătrimi', float(patrimi))
 
 
 # ---------------------------------------------------------------- comparare și aliniere
@@ -285,7 +286,7 @@ def _imbogateste(rezultat, copii, alt, scor_alt):
             a, b = _note_ordonate(m_src), _note_ordonate(m_dest)
             if [x[0] for x in a] != [x[0] for x in b]:
                 continue
-            for (_, ns), (_, nd) in zip(a, b):
+            for (_x, ns), (_y, nd) in zip(a, b):
                 corespondenta[id(ns)] = nd
                 for art in ns.articulations:
                     if not any(type(x) is type(art) for x in nd.articulations):
@@ -337,9 +338,9 @@ def _alege(var: dict, ordine: list):
     if len(prezente) == 1:
         M = var[prezente[0]]
         if not M.durata_ok:
-            return prezente[0], 'notele nu umplu corect măsura (' + '; '.join(M.probleme) + ')'
+            return prezente[0], _('notele nu umplu corect măsura (') + '; '.join(M.probleme) + ')'
         if len(ordine) > 1:
-            return prezente[0], 'a citit-o doar ' + prezente[0]
+            return prezente[0], _('a citit-o doar ') + prezente[0]
         return prezente[0], None
     # grupuri de programe care au citit identic
     # aceleași note, chiar dacă un program le-a pus pe alt portativ (mâinile pe același portativ), înseamnă „la fel”
@@ -354,16 +355,16 @@ def _alege(var: dict, ordine: list):
         M = var[prezente[0]]
         if M.durata_ok:
             return prezente[0], None
-        return prezente[0], 'toate programele au citit la fel, dar notele nu umplu corect măsura (' + '; '.join(M.probleme) + ')'
+        return prezente[0], _('toate programele au citit la fel, dar notele nu umplu corect măsura (') + '; '.join(M.probleme) + ')'
     # nu sunt de acord: majoritate, apoi verificarea de durată, apoi ordinea programelor
     grupuri.sort(key=lambda g: (-len(g), not var[g[0]].durata_ok, ordine.index(g[0])))
     cel_mai_bun = grupuri[0]
     if len(cel_mai_bun) > 1 and len(cel_mai_bun) > len(grupuri[1]):
-        motiv = f'{", ".join(cel_mai_bun)} au citit la fel, {", ".join(n for g in grupuri[1:] for n in g)} altfel'
+        motiv = _('{0} au citit la fel, {1} altfel', ", ".join(cel_mai_bun), ", ".join(n for g in grupuri[1:] for n in g))
     else:
-        motiv = 'programele au citit-o diferit'
+        motiv = _('programele au citit-o diferit')
         if var[cel_mai_bun[0]].durata_ok and not all(var[g[0]].durata_ok for g in grupuri[1:]):
-            motiv += f'; am ales varianta lui {cel_mai_bun[0]}, singura care umple corect măsura'
+            motiv += _('; am ales varianta lui {0}, singura care umple corect măsura', cel_mai_bun[0])
     return cel_mai_bun[0], motiv
 
 

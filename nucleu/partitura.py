@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from music21 import converter, instrument, key, layout, meter, stream, tempo
 
 from . import cuvinte, recunoastere
+from .limba import _
 
 FORMATE_DIRECTE = ('.musicxml', '.xml', '.mxl', '.mid', '.midi', '.abc', '.krn', '.mei')
 FORMATE_MUSESCORE = ('.mscz', '.mscx')
@@ -54,25 +55,25 @@ def numeste_portative(scor) -> list:
         if grup is None and i == 0 and len(parti) == 2 and (all(_e_pian(x) for x in parti) or parti[0].partName == parti[1].partName):
             grup = parti   # de exemplu un MIDI de pian cu două piste
             if not all(isinstance(g, stream.PartStaff) for g in grup):
-                rez = [Portativ('Mâna dreaptă', parti[0]), Portativ('Mâna stângă', parti[1])]
+                rez = [Portativ(_('Mâna dreaptă'), parti[0]), Portativ(_('Mâna stângă'), parti[1])]
                 break
         if grup and 2 <= len(grup) <= 3 and all(isinstance(g, stream.PartStaff) for g in grup) and id(p) not in folosite:
-            nume_baza = '' if len(parti) == len(grup) else (p.partName or 'Pian') + ', '
+            nume_baza = '' if len(parti) == len(grup) else (p.partName or _('Pian')) + ', '
             for k, g in enumerate(grup):
                 if k == 0:
-                    n = 'Mâna dreaptă'
+                    n = _('Mâna dreaptă')
                 elif k == 1:
-                    n = 'Mâna stângă'
+                    n = _('Mâna stângă')
                 else:
-                    n = f'Portativul {k + 1}'
+                    n = _('Portativul {0}', k + 1)
                 rez.append(Portativ(nume_baza + n, g)); folosite.add(id(g))
             i += len(grup)
             continue
         if id(p) in folosite:
             i += 1; continue
-        n = p.partName or f'Partida {len(rez) + 1}'
+        n = p.partName or _('Partida {0}', len(rez) + 1)
         if len(parti) == 1 and not p.partName:
-            n = 'Melodia'
+            n = _('Melodia')
         rez.append(Portativ(n, p)); folosite.add(id(p))
         i += 1
     return rez
@@ -86,7 +87,7 @@ class Partitura:
         self.nesigure = {}             # {număr măsură: motiv} la partiturile recunoscute din imagini
         self.portative = numeste_portative(scor)
         if not self.portative:
-            raise EroarePartitura('Partitura nu are nicio portativă cu note.')
+            raise EroarePartitura(_('Partitura nu are nicio portativă cu note.'))
         prima = self.portative[0].parte
         self.numere = []
         for m in prima.getElementsByClass(stream.Measure):
@@ -114,27 +115,27 @@ class Partitura:
     def descriere_generala(self) -> str:
         r = [self.titlu + '.']
         if self.compozitor:
-            r.append('Compozitor: ' + self.compozitor + '.')
+            r.append(_('Compozitor: ') + self.compozitor + '.')
         prima = self.portative[0].parte
         ks = prima.recurse().getElementsByClass(key.KeySignature).first()
         if ks is not None:
-            r.append('Tonalitatea: ' + cuvinte.nume_tonalitate(ks) + '.')
+            r.append(_('Tonalitatea: ') + cuvinte.nume_tonalitate(ks) + '.')
         try:
             est = self.scor.analyze('key')
-            r.append('Tonalitatea estimată din note: ' + cuvinte.nume_tonalitate(est) + '.')
+            r.append(_('Tonalitatea estimată din note: ') + cuvinte.nume_tonalitate(est) + '.')
         except Exception:
             pass
         ts = prima.recurse().getElementsByClass(meter.TimeSignature).first()
         if ts is not None:
-            r.append('Măsura de ' + cuvinte.text_masura_timp(ts) + '.')
+            r.append(_('Măsura de ') + cuvinte.text_masura_timp(ts) + '.')
         mm = self.scor.recurse().getElementsByClass(tempo.MetronomeMark).first()
         if mm is not None:
             t = cuvinte.text_tempo(mm)
             if t:
-                r.append('Tempo: ' + ', '.join(str(x) for x in t) + '.')
+                r.append(_('Tempo: ') + ', '.join(str(x) for x in t) + '.')
         n = len([x for x in self.numere if x])
-        r.append(f'{n} măsuri' + (', cu măsură de anacruză' if 0 in self.numere else '') + '.')
-        r.append('Portative: ' + ', '.join(p.nume for p in self.portative) + '.')
+        r.append(_('{0} măsuri', n) + (_(', cu măsură de anacruză') if 0 in self.numere else '') + '.')
+        r.append(_('Portative: ') + ', '.join(p.nume for p in self.portative) + '.')
         for a in self.avertismente:
             r.append(a)
         return ' '.join(r)
@@ -147,9 +148,9 @@ class Partitura:
             if nr < prima or nr > ultima:
                 continue
             m0 = self.portative[portative[0]].parte.measure(nr) if portative else None
-            cap = 'Anacruza.' if nr == 0 else f'Măsura {nr}.'
+            cap = _('Anacruza.') if nr == 0 else _('Măsura {0}.', nr)
             if nr in self.nesigure:
-                cap += f' Atenție, de verificat: {self.nesigure[nr]}.'
+                cap += _(' Atenție, de verificat: {0}.', self.nesigure[nr])
             ev = []
             if m0 is not None:
                 ev = cuvinte._evenimente_masura(m0, opt)
@@ -209,26 +210,24 @@ def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, ori
         scor = r.scor
         nesigure = r.nesigure
         if not r.programe:
-            avert.append('Partitura a fost recunoscută mai devreme; am deschis rezultatul salvat în folderul Recunoscute.')
+            avert.append(_('Partitura a fost recunoscută mai devreme; am deschis rezultatul salvat în folderul Recunoscute.'))
         elif len(r.programe) > 1:
-            avert.append(f'Partitura a fost recunoscută din imagine de {len(r.programe)} programe ({", ".join(r.programe)}), '
-                         'comparate măsură cu măsură.')
+            avert.append(_('Partitura a fost recunoscută din imagine de {0} programe ({1}), comparate măsură cu măsură.', len(r.programe), ", ".join(r.programe)))
         else:
-            avert.append(f'Partitura a fost recunoscută din imagine cu {r.programe[0]}.')
+            avert.append(_('Partitura a fost recunoscută din imagine cu {0}.', r.programe[0]))
         if nesigure:
-            avert.append(f'Măsuri de verificat: {len(nesigure)}, marcate în listă cu „de verificat”. '
-                         'Control U duce la următoarea. Celelalte au fost citite la fel de toate programele.')
+            avert.append(_('Măsuri de verificat: {0}, marcate în listă cu „de verificat”. Control U duce la următoarea. Celelalte au fost citite la fel de toate programele.', len(nesigure)))
         else:
-            avert.append('Toate măsurile au fost citite la fel și umplu corect timpii.')
+            avert.append(_('Toate măsurile au fost citite la fel și umplu corect timpii.'))
         if r.probleme:
-            avert.append('Nu a mers: ' + '; '.join(r.probleme)[:300])
+            avert.append(_('Nu a mers: ') + '; '.join(r.probleme)[:300])
     elif ext in FORMATE_DIRECTE:
         scor = converter.parse(cale)
     else:
-        raise EroarePartitura('Formatul acesta nu e cunoscut. Merg: MusicXML, MXL, MIDI, MuseScore, PDF și imagini.')
+        raise EroarePartitura(_('Formatul acesta nu e cunoscut. Merg: MusicXML, MXL, MIDI, MuseScore, PDF și imagini.'))
     if isinstance(scor, stream.Opus):
         scor = scor.scores[0]
-        avert.append('Fișierul are mai multe piese; am deschis-o pe prima.')
+        avert.append(_('Fișierul are mai multe piese; am deschis-o pe prima.'))
     if not isinstance(scor, stream.Score):
         s = stream.Score(); s.insert(0, scor); scor = s
     P = Partitura(scor, cale, avert)

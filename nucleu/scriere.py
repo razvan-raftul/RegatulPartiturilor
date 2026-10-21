@@ -19,6 +19,7 @@ import re
 
 from music21 import (bar, chord, clef, duration, instrument, key, layout, metadata, meter, note, pitch, stream,
                      tempo, tie)
+from .limba import _
 
 TREPTE = {'do': 'C', 're': 'D', 'mi': 'E', 'fa': 'F', 'sol': 'G', 'la': 'A', 'si': 'B',
           'c': 'C', 'd': 'D', 'e': 'E', 'f': 'F', 'g': 'G', 'a': 'A', 'b': 'B'}
@@ -27,14 +28,14 @@ ALTERATII = {'##': 2, '#': 1, 'bb': -2, 'b': -1, 'n': 0, '': None}
 
 MASURI = ['4/4', '3/4', '2/4', '2/2', '3/8', '6/8', '9/8', '12/8', '5/4', '3/2']
 TONALITATI = [  # (număr de alterații, nume)
-    (0, 'Do major sau la minor, fără alterații'),
-    (1, 'Sol major sau mi minor, 1 diez'), (2, 'Re major sau si minor, 2 diezi'), (3, 'La major sau fa diez minor, 3 diezi'),
-    (4, 'Mi major sau do diez minor, 4 diezi'), (5, 'Si major sau sol diez minor, 5 diezi'),
-    (6, 'Fa diez major sau re diez minor, 6 diezi'), (7, 'Do diez major sau la diez minor, 7 diezi'),
-    (-1, 'Fa major sau re minor, 1 bemol'), (-2, 'Si bemol major sau sol minor, 2 bemoli'),
-    (-3, 'Mi bemol major sau do minor, 3 bemoli'), (-4, 'La bemol major sau fa minor, 4 bemoli'),
-    (-5, 'Re bemol major sau si bemol minor, 5 bemoli'), (-6, 'Sol bemol major sau mi bemol minor, 6 bemoli'),
-    (-7, 'Do bemol major sau la bemol minor, 7 bemoli'),
+    (0, _('Do major sau la minor, fără alterații')),
+    (1, _('Sol major sau mi minor, 1 diez')), (2, _('Re major sau si minor, 2 diezi')), (3, _('La major sau fa diez minor, 3 diezi')),
+    (4, _('Mi major sau do diez minor, 4 diezi')), (5, _('Si major sau sol diez minor, 5 diezi')),
+    (6, _('Fa diez major sau re diez minor, 6 diezi')), (7, _('Do diez major sau la diez minor, 7 diezi')),
+    (-1, _('Fa major sau re minor, 1 bemol')), (-2, _('Si bemol major sau sol minor, 2 bemoli')),
+    (-3, _('Mi bemol major sau do minor, 3 bemoli')), (-4, _('La bemol major sau fa minor, 4 bemoli')),
+    (-5, _('Re bemol major sau si bemol minor, 5 bemoli')), (-6, _('Sol bemol major sau mi bemol minor, 6 bemoli')),
+    (-7, _('Do bemol major sau la bemol minor, 7 bemoli')),
 ]
 
 _NOTA = re.compile(r'^(do|re|mi|fa|sol|la|si)(##|#|bb|b|n)?(\d)?(?:(î|i|d|p|o|s|t)(\.*))?(~)?$')
@@ -124,7 +125,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
         (triolet if triolet is not None else elemente).append(el)
 
     def eroare(t, motiv):
-        raise EroareScriere(f'Măsura {nr}, {mana}: „{t}” {motiv}')
+        raise EroareScriere(_('Măsura {0}, {1}: „{2}” {3}', nr, _(mana), t, motiv))
 
     while i < len(jet):
         t = jet[i]
@@ -134,7 +135,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             continue
         if t == ']':
             if not acord:
-                eroare(t, 'închide un acord gol.')
+                eroare(t, _('închide un acord gol.'))
             lit, pct, leg = None, '', False
             if i < len(jet) and _DURATA.match(jet[i]):
                 md = _DURATA.match(jet[i]); i += 1
@@ -154,7 +155,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             continue
         if t == ')':
             if triolet is None:
-                eroare(t, 'închide un triolet care nu a fost deschis.')
+                eroare(t, _('închide un triolet care nu a fost deschis.'))
             norm = {3: 2, 2: 3, 5: 4, 6: 4}[n_tuplet]
             for el in triolet:
                 tp = duration.Tuplet(n_tuplet, norm)
@@ -168,7 +169,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
         if t == '~':
             tinta = (triolet if triolet is not None else elemente)
             if not tinta:
-                eroare(t, 'nu are notă înainte.')
+                eroare(t, _('nu are notă înainte.'))
             tinta[-1].tie = tie.Tie('start')
             continue
         if '+' in t and acord is None:
@@ -178,7 +179,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             for k, pt in enumerate(parti):
                 mm = _potrivire_nota(pt)
                 if not mm:
-                    eroare(pt, 'nu e o notă (de exemplu do4, fa#, sib3).')
+                    eroare(pt, _('nu e o notă (de exemplu do4, fa#, sib3).'))
                 pitches.append(_inaltime(mm, stare, armura, alterate))
                 ultima_m = mm
             lit, pct = ultima_m.group(4), ultima_m.group(5)
@@ -225,12 +226,12 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             adauga(n)
             continue
         if _DURATA.match(t):
-            eroare(t, 'e o durată fără notă înainte (cu litere, durata se scrie lipită: c4d).')
-        eroare(t, 'nu înțeleg ce e (o notă se scrie de exemplu do4 p).')
+            eroare(t, _('e o durată fără notă înainte (cu litere, durata se scrie lipită: c4d).'))
+        eroare(t, _('nu înțeleg ce e (o notă se scrie de exemplu do4 p).'))
     if acord is not None:
-        raise EroareScriere(f'Măsura {nr}, {mana}: acordul nu e închis cu ].')
+        raise EroareScriere(_('Măsura {0}, {1}: acordul nu e închis cu ].', nr, _(mana)))
     if triolet is not None:
-        raise EroareScriere(f'Măsura {nr}, {mana}: trioletul nu e închis cu ).')
+        raise EroareScriere(_('Măsura {0}, {1}: trioletul nu e închis cu ).', nr, _(mana)))
     return elemente
 
 
@@ -260,13 +261,13 @@ def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4
     rd, rs = randuri(dreapta), randuri(stanga)
     n = max(len(rd), len(rs))
     if n == 0:
-        raise EroareScriere('Nu ai scris nicio notă.')
+        raise EroareScriere(_('Nu ai scris nicio notă.'))
     ts_text = masura
     armura = _armura(alteratii)
     plina = meter.TimeSignature(ts_text).barDuration.quarterLength
     scor = stream.Score()
     md = metadata.Metadata()
-    md.title = titlu or 'Fără titlu'
+    md.title = titlu or _('Fără titlu')
     if compozitor:
         md.composer = compozitor
     scor.metadata = md
@@ -277,7 +278,7 @@ def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4
         if mana == 'mâna stângă' and not doua:
             continue
         parte = stream.PartStaff() if doua else stream.Part()
-        parte.partName = 'Pian'
+        parte.partName = _('Pian')
         parte.insert(0, instrument.Piano())
         stare = _Stare(oct0)
         for k in range(n):
@@ -302,8 +303,8 @@ def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4
             if anacruza and k == 0 and total < plina:
                 m.paddingLeft = plina - total
             elif abs(total - plina) > 1e-6:
-                cum = 'prea multe' if total > plina else 'prea puține'
-                probleme.append(f'Măsura {nr}, {mana}: {cum} timpi ({_timpi(total)} în loc de {_timpi(plina)}).')
+                cum = _('prea multe') if total > plina else _('prea puține')
+                probleme.append(_('Măsura {0}, {1}: {2} timpi ({3} în loc de {4}).', nr, _(mana), cum, _timpi(total), _timpi(plina)))
             if k == n - 1:
                 m.rightBarline = bar.Barline('final')
             parte.append(m)
@@ -312,7 +313,7 @@ def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4
     for p in parti:
         scor.insert(0, p)
     if doua:
-        scor.insert(0, layout.StaffGroup(parti, name='Pian', symbol='brace', barTogether=True))
+        scor.insert(0, layout.StaffGroup(parti, name=_('Pian'), symbol='brace', barTogether=True))
     return scor, probleme
 
 
@@ -321,8 +322,8 @@ def _timpi(q):
     q = float(q)
     if abs(q - round(q)) < 1e-6:
         n = int(round(q))
-        return '1 pătrime' if n == 1 else f'{n} pătrimi'
-    return f'{q:g} pătrimi'.replace('.', ',')
+        return _('1 pătrime') if n == 1 else _('{0} pătrimi', n)
+    return _('{0:g} pătrimi', q).replace('.', ',')
 
 
-AJUTOR = __doc__
+AJUTOR = _(__doc__)

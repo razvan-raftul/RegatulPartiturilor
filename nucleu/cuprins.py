@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 
 import numpy as np
+from .limba import _
 
 DPI = 150
 
@@ -511,12 +512,12 @@ def gaseste(cale_pdf: str, progres=None) -> dict:
     pagini = []
     for nr, img in pagini_gri(cale_pdf):
         if progres and (nr == 1 or nr % 10 == 0):
-            progres(f'Caut începutul pieselor: pagina {nr} din {n}.')
+            progres(_('Caut începutul pieselor: pagina {0} din {1}.', nr, n))
         pagini.append((nr, img.shape[1], img.shape[0], analizeaza_pagina(img)))
     # marginea stângă obișnuită a rândurilor (în fracțiune din lățimea paginii, ca să nu conteze scanarea)
     stangi = [s['stanga'] / w for _, w, _, ss in pagini for s in ss]
     if not stangi:
-        return {'fisier': os.path.basename(cale_pdf), 'pagini': n, 'piese': [], 'probleme': ['Nu am găsit portative în PDF.']}
+        return {'fisier': os.path.basename(cale_pdf), 'pagini': n, 'piese': [], 'probleme': [_('Nu am găsit portative în PDF.')]}
     obisnuit = float(np.median(stangi))
     rânduri = []
     for nr, w, h, ss in pagini:
@@ -544,8 +545,7 @@ def gaseste(cale_pdf: str, progres=None) -> dict:
             piese.append(p)
         elif inainte_final and i + 1 < len(rânduri):
             # bară de final urmată de un rând fără niciun semn: poate o piesă nouă, poate un „Fine” din mijlocul piesei
-            probleme.append(f'Pagina {r["pagina"]}: după o bară de final urmează un rând fără număr și neretras. '
-                            'Dacă acolo începe o piesă nouă, nu am numărat-o.')
+            probleme.append(_('Pagina {0}: după o bară de final urmează un rând fără număr și neretras. Dacă acolo începe o piesă nouă, nu am numărat-o.', r["pagina"]))
     for k, p in enumerate(piese):
         if k + 1 < len(piese):
             urm = piese[k + 1]
@@ -559,8 +559,7 @@ def gaseste(cale_pdf: str, progres=None) -> dict:
             p['pana_la'] = max(r['pagina'] for r in rânduri)
         p['pana_la'] = max(p['pana_la'], p['de_la'])
         if not p['sigur']:
-            probleme.append(f'Piesa {p["nr"]} (pagina {p["de_la"]}): are doar un semn de început de piesă. '
-                            'Verifică dacă e chiar o piesă nouă.')
+            probleme.append(_('Piesa {0} (pagina {1}): are doar un semn de început de piesă. Verifică dacă e chiar o piesă nouă.', p["nr"], p["de_la"]))
     return {'fisier': os.path.basename(cale_pdf), 'pagini': n, 'piese': piese, 'probleme': probleme, 'verificat': False}
 
 
@@ -609,10 +608,10 @@ def incarca_sau_gaseste(cale_pdf: str, progres=None) -> dict:
 
 
 def eticheta(p: dict) -> str:
-    nume = p.get('nume') or f'Piesa {p["nr"]}'
-    pag = f'pagina {p["de_la"]}' if p['de_la'] == p['pana_la'] else f'paginile {p["de_la"]}-{p["pana_la"]}'
+    nume = p.get('nume') or _('Piesa {0}', p["nr"])
+    pag = _('pagina {0}', p["de_la"]) if p['de_la'] == p['pana_la'] else _('paginile {0}-{1}', p["de_la"], p["pana_la"])
     extra = ', ' + p['descriere'] if p.get('descriere') else ''
-    return f'{nume}, {pag}{extra}' + ('' if p.get('sigur', True) else ', de verificat')
+    return f'{nume}, {pag}{extra}' + ('' if p.get('sigur', True) else _(', de verificat'))
 
 
 def pregateste_pdf(cale_pdf: str, de_la: int, pana_la: int, dest: str, taie_sus=None, taie_jos=None, dpi=300):

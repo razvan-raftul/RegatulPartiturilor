@@ -15,6 +15,7 @@ import unicodedata
 
 from music21 import bar, metadata, stream
 from music21.braille import basic, segment, text, translate
+from .limba import _
 
 # Unicode Braille (U+2800 + puncte) -> ASCII Braille (tabelul nord-american, folosit de fișierele .brf)
 ASCII_BRF = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[$+X!&;:4\\0Z7(_?W]#Y)="
@@ -282,7 +283,7 @@ def din_scor(scor: stream.Score, latime: int = 40, final: bool = True) -> str:
             try:
                 bucati.append(translate.objectToBraille(p, maxLineLength=latime))
             except Exception as e:
-                bucati.append(f'[Braille indisponibil pentru {p.partName or "această partidă"}: {e}]')
+                bucati.append(_('[Braille indisponibil pentru {0}: {1}]', p.partName or "această partidă", e))
         muzica = '\n\n'.join(bucati)
     muzica = _rupe_randuri(muzica, latime)
     return (sus + '\n\n' + muzica) if sus else muzica
