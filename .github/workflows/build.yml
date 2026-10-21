@@ -41,6 +41,21 @@ jobs:
           $c = "dist\RegatulPartiturilor\_internal\music21\corpus"
           if (Test-Path $c) { Get-ChildItem $c -Directory | Remove-Item -Recurse -Force }
           "{0:N0} MB" -f ((Get-ChildItem dist -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+      - name: Sunete (FluidSynth și banca de sunete GeneralUser GS)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          try {
+            New-Item -ItemType Directory -Force sunete | Out-Null
+            Invoke-WebRequest "https://github.com/FluidSynth/fluidsynth/releases/download/v2.6.1/fluidsynth-v2.6.1-win10-x64-cpp11.zip" -OutFile fs.zip
+            Expand-Archive fs.zip -DestinationPath fs -Force
+            Get-ChildItem fs -Recurse -Include 'libfluidsynth-3.dll','sndfile.dll' | ForEach-Object { Copy-Item $_.FullName sunete\ }
+            Invoke-WebRequest "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/GeneralUser-GS.sf2" -OutFile sunete\GeneralUser-GS.sf2
+            Invoke-WebRequest "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/documentation/LICENSE.txt" -OutFile sunete\GeneralUser-GS-licenta.txt
+            Copy-Item sunete dist\RegatulPartiturilor\ -Recurse -Force
+            Get-ChildItem sunete | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
+          } catch { Write-Host "Fara sunete: $_" }
+          exit 0
       - name: NVDA Controller Client (NVDA spune progresul actualizării)
         shell: pwsh
         run: |
@@ -70,6 +85,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           if (Test-Path nvdaControllerClient.dll) { Copy-Item nvdaControllerClient.dll testdist\RPTest\ }
+          if (Test-Path sunete) { Copy-Item sunete testdist\RPTest\ -Recurse -Force }
           $p = Start-Process "testdist\RPTest\RPTest.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest.txt' -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
           if (-not $p.WaitForExit(240000)) { Stop-Process -Id $p.Id -Force; Add-Content err.txt "TIMEOUT: programul nu s-a terminat in 4 minute" }
           $t = ''; if (Test-Path autotest.txt) { $t = Get-Content autotest.txt -Raw -Encoding utf8 }
