@@ -1,10 +1,13 @@
 """Scrierea partiturilor de mână, în text: fiecare rând e o măsură, pentru mâna dreaptă și pentru mâna stângă.
 
 Cum se scrie (aceeași scriere ca „Scriere scurtă” din textul în cuvinte):
-  nota:     do re mi fa sol la si, apoi alterația (# diez, ## dublu diez, b bemol, bb dublu bemol, n becar),
-            apoi octava (do4 = do central). Fără octavă se ia cea mai apropiată de nota de dinainte.
+  nota:     do re mi fa sol la si, sau cu litere: c d e f g a b (c = do, b = si), apoi alterația
+            (# diez, ## dublu diez, b bemol, bb dublu bemol, n becar), apoi octava (do4 sau c4 = do central).
+            Exemple: do#4d sau c#4d = do diez 4 doime; sib4d sau bb4d = si bemol 4 doime.
+            Fără octavă se ia cea mai apropiată de nota de dinainte.
   durata:   î întreagă, d doime, p pătrime, o optime, s șaisprezecime, t treizecidoime; cu punct: p. sau d..
             Se scrie după notă, lipit sau cu spațiu (do4 p, do4p). Fără durată rămâne cea de dinainte.
+            Cu litere, doimea se scrie lipită (c4d), pentru că „d” singur e nota re (c d e = do re mi).
   pauza:    pauză p (sau pauza p, sau - p).
   acord:    [do4 mi4 sol4] d   (sau do4+mi4+sol4 d)
   legato de prelungire: ~ după notă (do4 d~ do4 p).
@@ -17,7 +20,8 @@ import re
 from music21 import (bar, chord, clef, duration, instrument, key, layout, metadata, meter, note, pitch, stream,
                      tempo, tie)
 
-TREPTE = {'do': 'C', 're': 'D', 'mi': 'E', 'fa': 'F', 'sol': 'G', 'la': 'A', 'si': 'B'}
+TREPTE = {'do': 'C', 're': 'D', 'mi': 'E', 'fa': 'F', 'sol': 'G', 'la': 'A', 'si': 'B',
+          'c': 'C', 'd': 'D', 'e': 'E', 'f': 'F', 'g': 'G', 'a': 'A', 'b': 'B'}
 DURATE = {'î': 4.0, 'i': 4.0, 'd': 2.0, 'p': 1.0, 'o': 0.5, 's': 0.25, 't': 0.125}
 ALTERATII = {'##': 2, '#': 1, 'bb': -2, 'b': -1, 'n': 0, '': None}
 
@@ -34,6 +38,12 @@ TONALITATI = [  # (număr de alterații, nume)
 ]
 
 _NOTA = re.compile(r'^(do|re|mi|fa|sol|la|si)(##|#|bb|b|n)?(\d)?(?:(î|i|d|p|o|s|t)(\.*))?(~)?$')
+# cu litere: c d e f g a b; alterația, octava, durata lipită (bb4d = si bemol 4 doime)
+_LITERA = re.compile(r'^([a-g])(##|#|bb|b|n)?(\d)?(?:(î|i|d|p|o|s|t)(\.*))?(~)?$')
+
+
+def _potrivire_nota(t):
+    return _NOTA.match(t) or _LITERA.match(t)
 _DURATA = re.compile(r'^(î|i|d|p|o|s|t)(\.*)(~)?$')
 _PAUZA = re.compile(r'^(pauză|pauza|-)(?:(î|i|d|p|o|s|t)(\.*))?$')
 
@@ -166,17 +176,15 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             pitches = []
             ultima_m = None
             for k, pt in enumerate(parti):
-                mm = _NOTA.match(pt)
+                mm = _potrivire_nota(pt)
                 if not mm:
                     eroare(pt, 'nu e o notă (de exemplu do4, fa#, sib3).')
                 pitches.append(_inaltime(mm, stare, armura, alterate))
                 ultima_m = mm
             lit, pct = ultima_m.group(4), ultima_m.group(5)
-            if not lit and i < len(jet) and _DURATA.match(jet[i]):
+            if not lit and i < len(jet) and _DURATA.match(jet[i]) and not (_LITERA.match(parti[-1]) and _LITERA.match(jet[i])):
                 md = _DURATA.match(jet[i]); i += 1
                 lit, pct = md.group(1), md.group(2)
-                if md.group(3):
-                    ultima_m = None
             d, p = _durata(lit, pct, stare)
             c = chord.Chord(pitches)
             c.duration = duration.Duration(d * (2 - 0.5 ** p))
@@ -195,13 +203,18 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             adauga(r)
             continue
         mn = _NOTA.match(t)
+        cu_litera = False
+        if not mn:
+            mn = _LITERA.match(t)
+            cu_litera = mn is not None
         if mn:
             p_ = _inaltime(mn, stare, armura, alterate)
             if acord is not None:
                 acord.append(p_)
                 continue
             lit, pct, leg = mn.group(4), mn.group(5), bool(mn.group(6))
-            if not lit and i < len(jet) and _DURATA.match(jet[i]):
+            # după o notă scrisă cu litere, „d” singur e nota re, nu doime (c d e = do re mi)
+            if not lit and i < len(jet) and _DURATA.match(jet[i]) and not (cu_litera and _LITERA.match(jet[i])):
                 md = _DURATA.match(jet[i]); i += 1
                 lit, pct, leg = md.group(1), md.group(2), leg or bool(md.group(3))
             d, p = _durata(lit, pct, stare)
@@ -212,7 +225,7 @@ def citeste_masura(rand: str, stare: _Stare, armura: dict, nr: int, mana: str) -
             adauga(n)
             continue
         if _DURATA.match(t):
-            eroare(t, 'e o durată fără notă înainte.')
+            eroare(t, 'e o durată fără notă înainte (cu litere, durata se scrie lipită: c4d).')
         eroare(t, 'nu înțeleg ce e (o notă se scrie de exemplu do4 p).')
     if acord is not None:
         raise EroareScriere(f'Măsura {nr}, {mana}: acordul nu e închis cu ].')
