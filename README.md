@@ -8,7 +8,11 @@ It also plays the music (with a metronome), lets you play on the computer keyboa
 write your own scores as text and save them as MusicXML or BRF, and practise ear training
 (notes, intervals and chords).
 
-Languages: English (default), Română, Français, Deutsch, Español, Italiano (Settings tab, Control 6).
+Audio tracks (Control 6): separate a song into vocals, drums, bass, guitar, piano and the rest, or make an
+instrumental without the vocals (with Demucs, which runs on your computer), and change the key of a song.
+The separation program is downloaded the first time you use it.
+
+Languages: English (default), Română, Français, Deutsch, Español, Italiano (Settings tab, Control 7).
 
 Download: [RegatulPartiturilor-Setup.exe](https://github.com/razvan-raftul/RegatulPartiturilor/releases/download/latest/RegatulPartiturilor-Setup.exe).
 The program updates itself when it starts.
@@ -19,4 +23,5 @@ Made with Python, wxPython and music21.
 ---
 
 Program pentru Windows care citește partituri pentru muzicieni nevăzători, accesibil cu NVDA (fostul Regatul Partiturilor).
-Limba se alege din fila Setări (Control 6).
+Limba se alege din fila Setări (Control 7).
+Fila Piese audio (Control 6) desparte o piesă în voce, tobe, bas, chitară, pian și restul, face negativul și schimbă tonalitatea.
