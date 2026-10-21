@@ -1,13 +1,14 @@
 """Redarea cu sunet: din măsurile și portativele alese se face un fișier MIDI temporar,
 care se cântă cu sintetizatorul din Windows (prin MCI, fără alte programe).
-Se poate încetini sau grăbi tempoul și se poate repeta în buclă."""
+Se poate încetini sau grăbi tempoul, se poate repeta în buclă și se poate adăuga metronomul
+(o pistă de percuție cu bătăile măsurii, deci merge mereu în tempoul melodiei)."""
 import copy
 import os
 import tempfile
 import threading
 import time
 
-from music21 import bar, repeat, spanner, tempo
+from music21 import bar, meter, repeat, spanner, tempo
 
 TEMPO_IMPLICIT = 100       # dacă partitura nu are tempo scris
 _ALIAS = 'regatulredare'
@@ -50,17 +51,179 @@ def fa_midi(scor, procent=100) -> str:
 
 
 def midi_octeti(scor) -> bytes:
-    """MIDI-ul partiturii la tempoul scris (100%), ca octeți. Se face o singură dată pentru o selecție;
-    la schimbarea tempoului se modifică doar octeții (schimba_tempo_midi), fără music21."""
+    """MIDI-ul partiturii la tempoul scris (100%), ca octeți, cu melodia mai tare (mai_tare).
+    Se face o singură dată pentru o selecție; la schimbarea tempoului sau a metronomului
+    se modifică doar octeții, fără music21."""
     cale = fa_midi(scor, 100)
     try:
         with open(cale, 'rb') as f:
-            return f.read()
+            return mai_tare(f.read())
     finally:
         try:
             os.remove(cale)
         except OSError:
             pass
+
+
+def batai(scor):
+    """Bătăile metronomului pentru partitură: listă de (poziția în pătrimi, e_prima_din_masura).
+    Repetițiile se desfac la fel ca la MIDI, ca bătăile să cadă pe muzică. La anacruză,
+    bătăile se numără de la bara de măsură înapoi."""
+    try:
+        s = scor.expandRepeats()
+    except Exception:
+        s = scor
+    prima = s.parts[0] if s.parts else s
+    masuri = list(prima.getElementsByClass('Measure'))
+    rez = []
+    ts = None
+    for i, m in enumerate(masuri):
+        gasit = m.getElementsByClass(meter.TimeSignature)
+        if gasit:
+            ts = gasit[0]
+        elif ts is None:
+            ts = m.getContextByClass(meter.TimeSignature) or meter.TimeSignature('4/4')
+        bata = float(ts.beatDuration.quarterLength) or 1.0
+        plina = float(ts.barDuration.quarterLength)
+        start = float(m.offset)
+        lung = float(m.duration.quarterLength) or plina
+        if lung < plina - 1e-6 and i == 0:
+            # anacruza: bătăile sunt cele de la sfârșitul măsurii
+            sfarsit = start + lung
+            k = 1
+            poz = []
+            while sfarsit - k * bata >= start - 1e-6:
+                poz.append(sfarsit - k * bata)
+                k += 1
+            rez.extend((max(start, p), False) for p in reversed(poz))
+            continue
+        k = 0
+        while start + k * bata < start + lung - 1e-6:
+            rez.append((start + k * bata, k == 0))
+            k += 1
+    return rez
+
+
+# ---------------- MIDI ca listă de evenimente ----------------
+def _citeste(date: bytes):
+    """(format, diviziune, piste); fiecare pistă e o listă de (tick absolut, octeții evenimentului)."""
+    b = bytes(date)
+    if b[:4] != b'MThd':
+        raise ValueError('nu e MIDI')
+    hl = int.from_bytes(b[4:8], 'big')
+    fmt = int.from_bytes(b[8:10], 'big')
+    div = int.from_bytes(b[12:14], 'big')
+    i = 8 + hl
+    piste = []
+    while i + 8 <= len(b):
+        tip = b[i:i + 4]
+        lung = int.from_bytes(b[i + 4:i + 8], 'big')
+        start, sfarsit = i + 8, min(len(b), i + 8 + lung)
+        if tip == b'MTrk':
+            ev, j, t, stare = [], start, 0, 0
+            while j < sfarsit:
+                d, j = _vlq(b, j)
+                t += d
+                if j >= sfarsit:
+                    break
+                s0 = b[j]
+                if s0 == 0xFF:
+                    n, k = _vlq(b, j + 2)
+                    ev.append((t, b[j:k + n]))
+                    j = k + n
+                elif s0 in (0xF0, 0xF7):
+                    n, k = _vlq(b, j + 1)
+                    ev.append((t, b[j:k + n]))
+                    j = k + n
+                else:
+                    if s0 & 0x80:
+                        stare = s0
+                        j += 1
+                    n = 1 if (stare & 0xF0) in (0xC0, 0xD0) else 2
+                    ev.append((t, bytes([stare]) + b[j:j + n]))
+                    j += n
+            piste.append(ev)
+        i = sfarsit
+    return fmt, div, piste
+
+
+def _vlq_scrie(v):
+    o = [v & 0x7F]
+    v >>= 7
+    while v:
+        o.append((v & 0x7F) | 0x80)
+        v >>= 7
+    return bytes(reversed(o))
+
+
+def _scrie(fmt, div, piste) -> bytes:
+    out = bytearray(b'MThd' + (6).to_bytes(4, 'big') + (1 if len(piste) > 1 else fmt).to_bytes(2, 'big')
+                    + len(piste).to_bytes(2, 'big') + div.to_bytes(2, 'big'))
+    for ev in piste:
+        corp = bytearray()
+        t0 = 0
+        fin = False
+        for t, e in ev:
+            if e[:2] == b'\xff\x2f':
+                fin = True
+            corp += _vlq_scrie(max(0, t - t0)) + e
+            t0 = max(t0, t)
+        if not fin:
+            corp += b'\x00\xff\x2f\x00'
+        out += b'MTrk' + len(corp).to_bytes(4, 'big') + corp
+    return bytes(out)
+
+
+def _fara_sfarsit(ev):
+    """Scoate „sfârșitul pistei” (se pune la loc la scriere, după ultimul eveniment)."""
+    return [(t, e) for t, e in ev if e[:2] != b'\xff\x2f']
+
+
+def mai_tare(date: bytes) -> bytes:
+    """Melodia mai tare: volumul canalelor la maxim (controlerele 7 și 11) și notele lovite mai tare (cu 40%),
+    fără să se piardă diferența dintre piano și forte."""
+    try:
+        fmt, div, piste = _citeste(date)
+    except Exception:
+        return date
+    noi = []
+    for ev in piste:
+        canale = sorted({e[0] & 0x0F for _, e in ev if 0x80 <= e[0] < 0xF0})
+        rez = []
+        for c in canale:
+            rez.append((0, bytes([0xB0 | c, 7, 127])))
+            rez.append((0, bytes([0xB0 | c, 11, 127])))
+        for t, e in _fara_sfarsit(ev):
+            if (e[0] & 0xF0) == 0x90 and len(e) == 3 and e[2] > 0:
+                e = bytes([e[0], e[1], min(127, round(e[2] * 1.4))])
+            elif (e[0] & 0xF0) == 0xB0 and len(e) == 3 and e[1] in (7, 11):
+                continue                       # volumul rămâne la maxim
+            rez.append((t, e))
+        rez.sort(key=lambda x: x[0])           # stabil: controlerele de la 0 rămân înaintea notelor
+        noi.append(rez)
+    return _scrie(fmt, div, noi)
+
+
+NOTA_ACCENT = 76       # Hi Wood Block (prima bătaie din măsură)
+NOTA_BATAIE = 77       # Low Wood Block
+
+
+def cu_metronom(date: bytes, lista_batai, volum: int) -> bytes:
+    """Adaugă pista metronomului (canalul 10, percuție). volum: 0–100 la sută.
+    Tempoul vine din aceeași hartă de tempo ca melodia, deci metronomul merge mereu odată cu ea."""
+    if not lista_batai or volum <= 0:
+        return date
+    fmt, div, piste = _citeste(date)
+    vel = max(1, min(127, round(127 * volum / 100)))
+    accent = min(127, vel + 12)
+    scurt = max(1, div // 8)
+    ev = [(0, bytes([0xB9, 7, 127])), (0, bytes([0xB9, 11, 127]))]
+    for poz, prima in lista_batai:
+        t = int(round(poz * div))
+        ev.append((t, bytes([0x99, NOTA_ACCENT if prima else NOTA_BATAIE, accent if prima else vel])))
+        ev.append((t + scurt, bytes([0x89, NOTA_ACCENT if prima else NOTA_BATAIE, 0])))
+    ev.sort(key=lambda x: x[0])
+    return _scrie(1, div, piste + [ev])
 
 
 def _vlq(date, i):

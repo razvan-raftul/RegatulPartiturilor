@@ -66,4 +66,6 @@ def descarca_setup(versiune, progres=None) -> str:
 
 
 def porneste_setup(cale):
-    subprocess.Popen([cale, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/AUTOUPDATE'], close_fds=True)
+    # jurnalul instalării, ca să se vadă de ce n-ar merge: %TEMP%\RegatulPartiturilor-instalare.log
+    jurnal = os.path.join(tempfile.gettempdir(), 'RegatulPartiturilor-instalare.log')
+    subprocess.Popen([cale, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/AUTOUPDATE', f'/LOG={jurnal}'], close_fds=True)
