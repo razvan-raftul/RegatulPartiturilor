@@ -2,7 +2,9 @@
 ; Se instalează doar pentru utilizatorul curent, fără drepturi de administrator,
 ; ca actualizarea automată să poată înlocui fișierele fără întrebări.
 
-#define AppName "Regatul Partiturilor"
+#define AppName "Music Box"
+; numele vechi: scurtăturile cu el se șterg la actualizare
+#define NumeVechi "Regatul Partiturilor"
 #define AppExe "RegatulPartiturilor.exe"
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -34,14 +36,19 @@ UninstallDisplayName={#AppName}
 CloseApplications=yes
 
 [Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
 #if FileExists(AddBackslash(SourcePath) + "Romanian.isl")
 Name: "ro"; MessagesFile: "Romanian.isl"
-#else
-Name: "en"; MessagesFile: "compiler:Default.isl"
 #endif
 
+[CustomMessages]
+en.ScurtaturaDesktop=Create a desktop shortcut
+en.Scurtaturi=Shortcuts:
+ro.ScurtaturaDesktop=Pune o scurtătură pe desktop
+ro.Scurtaturi=Scurtături:
+
 [Tasks]
-Name: "desktopicon"; Description: "Pune o scurtătură pe desktop"; GroupDescription: "Scurtături:"
+Name: "desktopicon"; Description: "{cm:ScurtaturaDesktop}"; GroupDescription: "{cm:Scurtaturi}"
 
 [Files]
 Source: "dist\RegatulPartiturilor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -54,6 +61,8 @@ Source: "nvdaControllerClient32.dll"; Flags: dontcopy
 [InstallDelete]
 ; la actualizare se șterg fișierele vechi ale programului, ca să nu rămână biblioteci depășite
 Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{autoprograms}\{#NumeVechi}.lnk"
+Type: files; Name: "{autodesktop}\{#NumeVechi}.lnk"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\componente"
@@ -99,6 +108,42 @@ begin
   Log('Spune: ' + T);
 end;
 
+{ Limba programului, din setari.json (cheia "limba"). Setari fara limba: engleza (implicita programului).
+  Fara setari (prima instalare): limba programului de instalare. }
+function LimbaProgram: String;
+var
+  S: AnsiString;
+  T: String;
+begin
+  if LoadStringFromFile(ExpandConstant('{userappdata}\Regatul Partiturilor\setari.json'), S) then
+  begin
+    T := String(S);
+    Result := 'en';
+    if Pos('"limba": "ro"', T) > 0 then Result := 'ro'
+    else if Pos('"limba": "fr"', T) > 0 then Result := 'fr'
+    else if Pos('"limba": "de"', T) > 0 then Result := 'de'
+    else if Pos('"limba": "es"', T) > 0 then Result := 'es'
+    else if Pos('"limba": "it"', T) > 0 then Result := 'it';
+  end
+  else if ActiveLanguage = 'ro' then
+    Result := 'ro'
+  else
+    Result := 'en';
+end;
+
+function TextLimba(const En, Ro, Fr, De, Es, It: String): String;
+var
+  L: String;
+begin
+  L := LimbaProgram;
+  if L = 'ro' then Result := Ro
+  else if L = 'fr' then Result := Fr
+  else if L = 'de' then Result := De
+  else if L = 'es' then Result := Es
+  else if L = 'it' then Result := It
+  else Result := En;
+end;
+
 { Spune procentul total (pana la 99), doar cand trece de un nou multiplu de 10. }
 procedure SpuneProcent(Procent: Integer);
 var
@@ -109,7 +154,7 @@ begin
   if (Zece > UltimulSpus) and (Zece > 0) then
   begin
     UltimulSpus := Zece;
-    Spune(Format('%d la sută.', [Zece]));
+    Spune(Format(TextLimba('%d percent.', '%d la sută.', '%d pour cent.', '%d Prozent.', '%d por ciento.', '%d per cento.'), [Zece]));
   end;
 end;
 
@@ -221,7 +266,7 @@ begin
     else
     begin
       Inceput := 0;
-      Spune('Se instalează.');
+      Spune(TextLimba('Installing.', 'Se instalează.', 'Installation.', 'Wird installiert.', 'Instalando.', 'Installazione in corso.'));
     end;
     UltimulSpus := Inceput;
   end;
@@ -239,5 +284,6 @@ begin
   end;
   { la actualizarea automata, programul redeschis spune „100 la sută. Actualizare terminată.” }
   if (CurStep = ssDone) and not IsAutoUpdate then
-    Spune('100 la sută. Instalare terminată.');
+    Spune(TextLimba('100 percent. Installation complete.', '100 la sută. Instalare terminată.', '100 pour cent. Installation terminée.',
+                    '100 Prozent. Installation abgeschlossen.', '100 por ciento. Instalación terminada.', '100 per cento. Installazione completata.'));
 end;
