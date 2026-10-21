@@ -736,7 +736,9 @@ class Fereastra(wx.Frame):
 
     def reda_sau_pauza(self):
         """K: dacă nu se cântă nimic, redă selecția; altfel oprește sau continuă de unde a rămas."""
-        if self.redare.stare == 'oprit':
+        if self.redare.terminat():
+            # s-a terminat (sau nu se cântă nimic): K o ia de la începutul selecției, ca Shift K
+            self.redare.opreste()
             self.reda(False)
         else:
             self.pauza()
