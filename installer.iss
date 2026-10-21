@@ -118,6 +118,26 @@ begin
   Result := Pos('/AUTOUPDATE', Uppercase(GetCmdTail)) > 0;
 end;
 
+{ La actualizarea automata programul tocmai se inchide. Asteptam (cel mult 30 de secunde) sa se inchida de tot,
+  altfel fisierele lui sunt inca folosite, instalarea fara ferestre renunta si la urmatoarea pornire
+  actualizarea o ia de la capat. Programul tine semnul "RegatulPartiturilorRuleaza" cat e deschis. }
+function InitializeSetup: Boolean;
+var
+  I: Integer;
+begin
+  if IsAutoUpdate then
+  begin
+    I := 0;
+    while CheckForMutexes('RegatulPartiturilorRuleaza') and (I < 60) do
+    begin
+      Sleep(500);
+      I := I + 1;
+    end;
+    Log(Format('Asteptat inchiderea programului: %d x 0,5 s', [I]));
+  end;
+  Result := True;
+end;
+
 { Versiunea dorita a unei componente, din componente.txt (linia "Nume = link"). }
 function VersiuneDorita(const Nume: String): String;
 var
