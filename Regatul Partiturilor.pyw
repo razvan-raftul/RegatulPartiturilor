@@ -19,7 +19,7 @@ if sys.stderr is None:
 import wx  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nucleu import VERSIUNE, actualizare, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, voce  # noqa: E402
 
 NUME = 'Regatul Partiturilor'
 INDEMN = 'Nicio partitură deschisă. Deschide o partitură cu Control O.'
@@ -61,7 +61,9 @@ Shift plus plus: metronomul mai tare cu 1 la sută. Shift plus minus: mai încet
 Control plus Shift plus plus: mai tare cu 5 la sută. Control plus Shift plus minus: mai încet cu 5 la sută.
 Control plus 4: fila Scrie o partitură (scrii tu notele, pentru mâna dreaptă și stânga, apoi asculți și salvezi ca MusicXML sau BRF).
 În câmpurile mâinilor: Control plus Enter ascultă măsura pe care ești (ambele mâini), F2 spune pe ce măsură ești.
-Control plus 5: fila Setări (metronomul pornit sau oprit, volumul lui, instrumentul claviaturii, unde sunt programele de recunoaștere).
+Control plus 5: exerciții de auz (programul cântă o notă, un interval sau un acord și tu alegi ce ai auzit).
+Acolo: Enter în lista Răspunsuri răspunde, F3 ascultă din nou, F4 exercițiu nou.
+Control plus 6: fila Setări (metronomul pornit sau oprit, volumul lui, instrumentul claviaturii, unde sunt programele de recunoaștere).
 
 Citește din fereastră (pentru aplicațiile editurilor, din care nu se poate descărca):
 Control plus Alt plus P, apăsat din aplicația editurii: citește pagina afișată acum.
@@ -74,7 +76,7 @@ Deasupra, de la Tab: do diez, re diez, W gol, fa diez, sol diez, la diez, Y gol,
 Săgeată dreapta sau stânga: o octavă mai sus sau mai jos (NVDA spune doar numărul octavei).
 Săgeată sus sau jos: alt instrument.
 Control plus săgeată dreapta sau stânga: transpui cu un semiton (ce era do se aude do diez).
-Escape sau Control plus 1: ieși din claviatură. Instrumentul se poate alege și din fila Setări (Control plus 5).
+Escape sau Control plus 1: ieși din claviatură. Instrumentul se poate alege și din fila Setări (Control plus 6).
 
 F1: această listă.
 
@@ -174,7 +176,8 @@ class Fereastra(wx.Frame):
         self._m(n, 'Textul în Braille\tCtrl+2', lambda e: self.arata(1))
         self._m(n, 'Claviatura (cânți pe tastatură)\tCtrl+3', lambda e: self.arata(2))
         self._m(n, 'Scrie o partitură\tCtrl+4', lambda e: self.arata(3))
-        self._m(n, 'Setările\tCtrl+5', lambda e: self.arata(4))
+        self._m(n, 'Exerciții de auz\tCtrl+5', lambda e: self.arata(4))
+        self._m(n, 'Setările\tCtrl+6', lambda e: self.arata(5))
         self._m(n, 'Lista de măsuri\tCtrl+L', lambda e: self.lista.SetFocus())
         mb.Append(n, '&Navigare')
         r = wx.Menu()
@@ -262,6 +265,7 @@ class Fereastra(wx.Frame):
         self.carte.AddPage(pb, 'Braille')
         self.carte.AddPage(pk, 'Claviatura')
         self._fila_scriere()
+        self._fila_auz()
         # fila Setări (ultima): metronomul, instrumentul claviaturii, unde sunt programele de recunoaștere
         self.p_setari = ps = wx.Panel(self.carte)
         ss = wx.BoxSizer(wx.VERTICAL)
@@ -572,7 +576,7 @@ class Fereastra(wx.Frame):
 
     def arata(self, pagina):
         self.carte.SetSelection(pagina)
-        (self.t_cuvinte, self.t_braille, self.t_clav, self.w_titlu, self.s_metronom)[pagina].SetFocus()
+        (self.t_cuvinte, self.t_braille, self.t_clav, self.w_titlu, self.a_ex, self.s_metronom)[pagina].SetFocus()
         if pagina == 1:
             self.actualizeaza_braille()
 
@@ -662,6 +666,7 @@ class Fereastra(wx.Frame):
                 traceback.print_exc()
                 batai = []
             self._midi_cache = (sel, redare.midi_octeti(bucata), batai)
+        self.sint.inchide()                  # sintetizatorul îl folosește acum redarea piesei
         date = self._midi_cache[1]
         metronom = self.volum_metronom if self.metronom else 0
         if metronom:
@@ -980,6 +985,201 @@ class Fereastra(wx.Frame):
         self._salveaza_ciorna()
         self.w_titlu.SetFocus()
 
+    # ---------------- exerciții de auz ----------------
+    def _fila_auz(self):
+        d = self.setari.get('auz', {})
+        try:
+            self.auz_set = auz.Setari(**{k: v for k, v in d.items() if k in auz.Setari.__dataclass_fields__})
+        except Exception:
+            self.auz_set = auz.Setari()
+        self.auz_ses = auz.Sesiune(self.auz_set)
+        self._auz_gen = 0
+        self.p_auz = pa = wx.Panel(self.carte)
+        sa = wx.BoxSizer(wx.VERTICAL)
+
+        def eticheta(text):
+            t = wx.StaticText(pa, label=text)
+            sa.Add(t, 0, wx.LEFT | wx.TOP, 4)
+            return t
+
+        eticheta('Exercițiul')
+        self.a_ex = wx.Choice(pa, choices=auz.EXERCITII, name='Exercițiul')
+        sa.Add(self.a_ex, 0, wx.ALL, 3)
+        eticheta('Numele notelor')
+        self.a_nume = wx.Choice(pa, choices=['Do Re Mi', 'C D E'], name='Numele notelor')
+        sa.Add(self.a_nume, 0, wx.ALL, 3)
+        eticheta('Octavele (bifezi cu spațiu)')
+        self.a_oct = ListaBife(pa, choices=[f'Octava {o}' for o in range(2, 7)], name='Octavele', size=(-1, 70))
+        sa.Add(self.a_oct, 0, wx.EXPAND | wx.ALL, 3)
+        eticheta('Cât de des apar cele bifate mai jos')
+        self.a_izol = wx.Choice(pa, choices=auz.IZOLARE, name='Cât de des apar cele bifate')
+        sa.Add(self.a_izol, 0, wx.ALL, 3)
+        self.a_e_note = eticheta('Notele exersate')
+        self.a_note = ListaBife(pa, choices=auz.SOLFEGIU, name='Notele exersate', size=(-1, 90))
+        sa.Add(self.a_note, 0, wx.EXPAND | wx.ALL, 3)
+        self.a_e_int = eticheta('Intervalele exersate')
+        self.a_int = ListaBife(pa, choices=auz.INTERVALE, name='Intervalele exersate', size=(-1, 90))
+        sa.Add(self.a_int, 0, wx.EXPAND | wx.ALL, 3)
+        self.a_e_red = eticheta('Cum se cântă intervalul')
+        self.a_red = wx.Choice(pa, choices=auz.REDARE_INTERVAL, name='Cum se cântă intervalul')
+        sa.Add(self.a_red, 0, wx.ALL, 3)
+        self.a_e_ac = eticheta('Acordurile exersate')
+        self.a_ac = ListaBife(pa, choices=[a[0] for a in auz.ACORDURI], name='Acordurile exersate', size=(-1, 90))
+        sa.Add(self.a_ac, 0, wx.EXPAND | wx.ALL, 3)
+        self.a_rast = wx.CheckBox(pa, label='Întreabă și răsturnarea')
+        sa.Add(self.a_rast, 0, wx.ALL, 3)
+        self.a_fund = wx.CheckBox(pa, label='Întreabă și fundamentala')
+        sa.Add(self.a_fund, 0, wx.ALL, 3)
+        eticheta('Câte greșeli până îți arăt răspunsul')
+        self.a_gres = wx.SpinCtrl(pa, min=1, max=5, initial=2, name='Câte greșeli până îți arăt răspunsul')
+        sa.Add(self.a_gres, 0, wx.ALL, 3)
+        eticheta('Întrebarea')
+        self.a_intreb = wx.TextCtrl(pa, style=wx.TE_READONLY, value='Alege exercițiul și apasă F4 sau Exercițiu nou.', name='Întrebarea')
+        sa.Add(self.a_intreb, 0, wx.EXPAND | wx.ALL, 3)
+        eticheta('Răspunsuri (Enter răspunde)')
+        self.a_rasp = wx.ListBox(pa, name='Răspunsuri', size=(-1, 110))
+        sa.Add(self.a_rasp, 1, wx.EXPAND | wx.ALL, 3)
+        rand = wx.WrapSizer()
+        for text, fn in (('Exercițiu nou (F4)', lambda e: self.auz_nou()), ('Ascultă din nou (F3)', lambda e: self.auz_asculta()),
+                         ('Scorul', lambda e: self._auz_spune(self.auz_ses.scor.text())),
+                         ('Scorul de la zero', lambda e: self._auz_scor_zero())):
+            b = wx.Button(pa, label=text)
+            b.Bind(wx.EVT_BUTTON, fn)
+            rand.Add(b, 0, wx.ALL, 3)
+        sa.Add(rand, 0, wx.EXPAND)
+        pa.SetSizer(sa)
+        self.carte.AddPage(pa, 'Exerciții de auz')
+        # valorile salvate
+        s = self.auz_set
+        self.a_ex.SetSelection(s.exercitiu)
+        self.a_nume.SetSelection(1 if s.litere else 0)
+        for o in s.octave:
+            if 2 <= o <= 6:
+                self.a_oct.Check(o - 2)
+        self.a_izol.SetSelection(s.izolare)
+        for lista, bif in ((self.a_note, s.note_bifate), (self.a_int, s.intervale_bifate), (self.a_ac, s.acorduri_bifate)):
+            for i in bif:
+                if 0 <= i < lista.GetCount():
+                    lista.Check(i)
+        self.a_red.SetSelection(s.redare_interval)
+        self.a_rast.SetValue(s.rasturnari)
+        self.a_fund.SetValue(s.fundamentala)
+        self.a_gres.SetValue(s.greseli_pana_la_raspuns)
+        self._auz_arata_ce_trebuie()
+        for c in (self.a_ex, self.a_nume, self.a_izol, self.a_red):
+            c.Bind(wx.EVT_CHOICE, self._auz_schimbat)
+        for c in (self.a_oct, self.a_note, self.a_int, self.a_ac):
+            c.Bind(wx.EVT_LIST_ITEM_CHECKED, self._auz_schimbat)
+            c.Bind(wx.EVT_LIST_ITEM_UNCHECKED, self._auz_schimbat)
+        for c in (self.a_rast, self.a_fund):
+            c.Bind(wx.EVT_CHECKBOX, self._auz_schimbat)
+        self.a_gres.Bind(wx.EVT_SPINCTRL, self._auz_schimbat)
+        self.a_rasp.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self.auz_raspunde())
+
+    def _auz_arata_ce_trebuie(self):
+        ex = self.a_ex.GetSelection()
+        for ctrl, cand in ((self.a_e_note, 0), (self.a_note, 0), (self.a_e_int, 1), (self.a_int, 1), (self.a_e_red, 1),
+                           (self.a_red, 1), (self.a_e_ac, 2), (self.a_ac, 2), (self.a_rast, 2), (self.a_fund, 2)):
+            ctrl.Show(ex == cand)
+        nume = auz.nume_note(self.a_nume.GetSelection() == 1)
+        for i, n in enumerate(nume):
+            self.a_note.SetString(i, n)
+        self.p_auz.Layout()
+
+    def _auz_schimbat(self, e=None):
+        s = self.auz_set
+        vechi_ex = s.exercitiu
+        s.exercitiu = max(0, self.a_ex.GetSelection())
+        s.litere = self.a_nume.GetSelection() == 1
+        s.octave = [i + 2 for i in self.a_oct.GetCheckedItems()] or [4]
+        s.izolare = max(0, self.a_izol.GetSelection())
+        s.note_bifate = list(self.a_note.GetCheckedItems())
+        s.intervale_bifate = list(self.a_int.GetCheckedItems())
+        s.acorduri_bifate = list(self.a_ac.GetCheckedItems())
+        s.redare_interval = max(0, self.a_red.GetSelection())
+        s.rasturnari = self.a_rast.GetValue()
+        s.fundamentala = self.a_fund.GetValue()
+        s.greseli_pana_la_raspuns = self.a_gres.GetValue()
+        self.setari['auz'] = dict(s.__dict__)
+        scrie_setari(self.setari)
+        self._auz_arata_ce_trebuie()
+        if s.exercitiu != vechi_ex:
+            self.auz_ses.ex = None
+            self.a_rasp.Clear()
+            self.a_intreb.SetValue('Apasă F4 sau Exercițiu nou.')
+        if e:
+            e.Skip()
+
+    def _auz_spune(self, text):
+        self.SetStatusText(text)
+        voce.spune(text, intrerupe=True)
+
+    def _auz_scor_zero(self):
+        self.auz_ses.scor = auz.Scor()
+        self._auz_spune('Scorul a pornit de la zero.')
+
+    def _auz_arata_intrebarea(self):
+        q = self.auz_ses.intrebare
+        if q is None:
+            return
+        self.a_intreb.SetValue(q.text)
+        self.a_rasp.Set(q.optiuni)
+        self.a_rasp.SetSelection(0)
+
+    def auz_nou(self):
+        self._auz_schimbat()
+        self.auz_ses.nou()
+        self._auz_arata_intrebarea()
+        self.a_rasp.SetFocus()
+        self.auz_asculta()
+
+    def auz_asculta(self):
+        ex = self.auz_ses.ex
+        if ex is None:
+            self.auz_nou()
+            return
+        self.redare.opreste()
+        try:
+            self.sint.program = claviatura.INSTRUMENTE[self.instrument][1]
+            self.sint.deschide()
+        except Exception as exc:
+            self._auz_spune(str(exc))
+            return
+        self._auz_gen += 1
+        gen = self._auz_gen
+
+        def canta():
+            for note_, durata, pauza in ex.pasi:
+                if gen != self._auz_gen:
+                    break
+                for n in note_:
+                    self.sint.apasa(n, 100)
+                time.sleep(durata / 1000)
+                for n in note_:
+                    self.sint.ridica(n)
+                if pauza:
+                    time.sleep(pauza / 1000)
+        threading.Thread(target=canta, daemon=True).start()
+
+    def auz_raspunde(self):
+        i = self.a_rasp.GetSelection()
+        if i < 0 or self.auz_ses.ex is None:
+            return
+        mesaj, gata = self.auz_ses.raspunde(i)
+        self._auz_spune(mesaj)
+        self.a_intreb.SetValue(mesaj)
+        if not gata and self.auz_ses.intrebare and self.auz_ses.pas > 0 and mesaj.startswith('Corect'):
+            q = self.auz_ses.intrebare
+            self.a_rasp.Set(q.optiuni)
+            self.a_rasp.SetSelection(0)
+        if gata:
+            # următorul exercițiu vine singur; după un răspuns arătat, mai târziu, ca să apuci să-l auzi
+            wx.CallLater(1500 if mesaj.startswith('Răspuns corect') else 4000, self._auz_urmatorul, self.auz_ses.ex)
+
+    def _auz_urmatorul(self, ex_vechi):
+        if self.auz_ses.ex is ex_vechi and self.carte.GetSelection() == 4:
+            self.auz_nou()
+
     # ---------------- claviatura ----------------
     def _clav_text(self):
         nume = claviatura.INSTRUMENTE[self.instrument][0]
@@ -1114,7 +1314,14 @@ class Fereastra(wx.Frame):
             if e.GetKeyCode() == wx.WXK_F2:
                 self.scriere_spune_masura()
                 return
-        if foc is not None and foc.GetParent() in (self.p_setari, self.p_scriere):
+        if foc is not None and foc.GetParent() is self.p_auz:
+            if e.GetKeyCode() == wx.WXK_F3:
+                self.auz_asculta(); return
+            if e.GetKeyCode() == wx.WXK_F4:
+                self.auz_nou(); return
+            if foc is self.a_rasp and e.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                self.auz_raspunde(); return
+        if foc is not None and foc.GetParent() in (self.p_setari, self.p_scriere, self.p_auz):
             e.Skip()                     # în fila Setări tastele lucrează normal (bife, câmpuri, butoane)
             return
         if isinstance(foc, (wx.TextCtrl, wx.SpinCtrl)) and (not isinstance(foc, wx.TextCtrl) or foc.IsEditable()) or e.AltDown():
@@ -1384,6 +1591,30 @@ class Fereastra(wx.Frame):
 ID_TASTA_GLOBALA = 0x5250
 
 
+class ListaBife(wx.ListCtrl):
+    """Listă cu căsuțe de bifat (controlul listă din Windows: NVDA spune „bifat” / „nebifat”, bifezi cu spațiu)."""
+    def __init__(self, parinte, choices, name, size=(-1, -1)):
+        super().__init__(parinte, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.LC_SINGLE_SEL, size=size, name=name)
+        self.AppendColumn(name, width=320)
+        self.EnableCheckBoxes(True)
+        for c in choices:
+            self.Append([c])
+        if choices:
+            self.Focus(0)
+
+    def GetCount(self):
+        return self.GetItemCount()
+
+    def Check(self, i, bifat=True):
+        self.CheckItem(i, bifat)
+
+    def GetCheckedItems(self):
+        return [i for i in range(self.GetItemCount()) if self.IsItemChecked(i)]
+
+    def SetString(self, i, text):
+        self.SetItemText(i, text)
+
+
 class DialogText(wx.Dialog):
     """Mesaj citibil rând cu rând (un câmp de text), cu buton OK."""
     def __init__(self, parinte, titlu, text):
@@ -1451,6 +1682,10 @@ def autotest(fisier, iesire):
         rez.append(f'TEMPO RAPID {len(rapid) == len(baza_midi) and rapid != baza_midi} {int((time.time() - t0) * 1000)} ms')
         sc_s, pr_s = scriere.construieste('do5 p mi sol do6\n[do5 mi5 sol5] î', 'do3 d sol2\ndo3+sol3 î', 'Proba', '', '4/4', 1, 90)
         rez.append(f'SCRIERE {len(partitura.Partitura(sc_s, "p.musicxml").numere)} masuri, probleme {len(pr_s)}, braille {len(braille.din_scor(sc_s))}')
+        ses = auz.Sesiune(auz.Setari(exercitiu=2, rasturnari=True, fundamentala=True))
+        ses.nou()
+        rez.append(f'AUZ {len(ses.ex.intrebari)} intrebari, raspuns: {ses.raspunde(ses.intrebare.corect)[0]}')
+        rez.append('SCRIERE LITERE ' + str(len(scriere.construieste('c4p d e f\nbb4d c#5d', '')[0].parts[0].recurse().notes)))
         b_met = redare.batai(P.extrage(P.numere[0], P.numere[0] + 3, [0]))
         cu_met = redare.cu_metronom(baza_midi, b_met, 60)
         rez.append(f'METRONOM {len(b_met)} batai, piste {len(redare._citeste(baza_midi)[2])} -> {len(redare._citeste(cu_met)[2])}')
