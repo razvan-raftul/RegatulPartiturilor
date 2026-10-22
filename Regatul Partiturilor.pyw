@@ -142,7 +142,7 @@ class Fereastra(wx.Frame):
         self._apasate = {}                   # tasta fizică -> nota care sună
         self._vibrato = claviatura.Vibrato(self.sint)
         self._bender_apasat = False
-        self._midi_cache = (None, None, None)  # (selecția, MIDI la 100%, bătăile): nu se mai face din nou la fiecare tempo
+        self._midi_cache = (None, None, None, [])  # (selecția, MIDI la 100%, bătăile, măsurile): nu se mai face din nou la fiecare tempo
         self._redat = None                   # (selecția, procentul, metronomul) cu care se cântă acum
         self._tempo_amanat = None
         self._ocupat_recunoastere = False
@@ -211,6 +211,9 @@ class Fereastra(wx.Frame):
         self._m(r, _('Redă, oprește sau continuă (K)'), lambda e: self.reda_sau_pauza())
         self._m(r, _('Reia de la început (Shift K)'), lambda e: self.reda(False))
         self._m(r, _('Redă de la măsura aleasă până la final (I)'), lambda e: self.reda(True))
+        self._m(r, _('Înainte o măsură (L)'), lambda e: self.inainte_inapoi(1))
+        self._m(r, _('Înapoi o măsură (J)'), lambda e: self.inainte_inapoi(-1))
+        self._m(r, _('Oprește redarea (Escape)'), self.opreste_redarea)
         r.AppendSeparator()
         self._m(r, _('Mai rar cu 5 la sută (Shift 1)'), lambda e: self.schimba_tempo(-5))
         self._m(r, _('Mai repede cu 5 la sută (Shift 2)'), lambda e: self.schimba_tempo(5))
@@ -227,7 +230,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI, _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Ca la un player: K pornește de la măsura aleasă și cântă până la final (în buclă, doar măsura). În timp ce se cântă, L sare la măsura următoare, J la începutul măsurii, iar de două ori la cea dinainte; NVDA spune numărul măsurii. K pune pauză și continuă, Escape oprește. Când nu se cântă, L și J mută măsura aleasă, cursorul rămâne unde e și NVDA spune doar măsura.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -555,7 +558,7 @@ class Fereastra(wx.Frame):
             self.mesaj(eroare, _('Nu s-a deschis'))
             return
         self.P = P
-        self._midi_cache = (None, None, None)
+        self._midi_cache = (None, None, None, [])
         self.SetTitle(f'{P.titlu} – {NUME}')
         self.lista.Set([_('Despre piesă'), _('Toată piesa')] + [(_('Anacruza') if n == 0 else _('Măsura {0}', n)) + (_(', de verificat') if n in P.nesigure else '')
                                                           for n in P.numere])
@@ -649,7 +652,40 @@ class Fereastra(wx.Frame):
         self.lista.SetSelection(nou)
         self.lista.EnsureVisible(nou)
         self.actualizeaza()
-        self.arata(self.carte.GetSelection())
+        # cursorul rămâne unde e; NVDA spune doar măsura
+        if self.carte.GetSelection() == 1:
+            self.actualizeaza_braille()
+        voce.spune(self.lista.GetString(nou), intrerupe=True)
+
+    def inainte_inapoi(self, pas):
+        """L și J: în timpul redării sar la măsura următoare sau la începutul măsurii (de două ori: la cea dinainte),
+        ca la un player; altfel mută selecția cu o măsură."""
+        harta = getattr(self, '_harta', [])
+        if self.redare.stare not in ('canta', 'pauza') or not harta or self.redare.terminat():
+            self.muta(pas)
+            return
+        poz = self.redare.pozitie()
+        i = max(0, max((k for k, (ms, _n) in enumerate(harta) if ms <= poz + 50), default=0))
+        if pas > 0:
+            j = i + 1
+            if j >= len(harta):
+                voce.spune(_('Ultima măsură.'), intrerupe=True)
+                return
+        else:
+            j = i if poz - harta[i][0] > 1200 else max(0, i - 1)
+        try:
+            self.redare.sari(harta[j][0])
+        except Exception as ex:
+            self.SetStatusText(str(ex))
+            return
+        text = _('Anacruza') if harta[j][1] == 0 else _('Măsura {0}', harta[j][1])
+        self.SetStatusText(text)
+        voce.spune(text, intrerupe=True)
+
+    def opreste_redarea(self, e=None):
+        self.redare.opreste()
+        self.SetStatusText(_('Oprit.'))
+        voce.spune(_('Oprit.'), intrerupe=True)
 
     def mergi_la(self, e=None):
         if not self.P:
@@ -702,6 +738,9 @@ class Fereastra(wx.Frame):
             return
         s = self.selectie() or (self.P.numere[0], self.P.numere[-1], self._portative_alese())
         prima, ultima, port = s
+        # ca la un player: de la o singură măsură aleasă se cântă până la final (în buclă rămâne doar măsura)
+        if prima == ultima and not self.m_bucla.IsChecked():
+            pana_la_final = True
         if pana_la_final:
             ultima = self.P.numere[-1]
         try:
@@ -723,7 +762,12 @@ class Fereastra(wx.Frame):
             except Exception:
                 traceback.print_exc()
                 batai = []
-            self._midi_cache = (sel, redare.midi_octeti(bucata), batai)
+            try:
+                masuri = redare.masuri(bucata)
+            except Exception:
+                traceback.print_exc()
+                masuri = []
+            self._midi_cache = (sel, redare.midi_octeti(bucata), batai, masuri)
         self.sint.elibereaza()               # la sintetizatorul Windows: îl folosește acum redarea piesei
         date = self._midi_cache[1]
         metronom = self.volum_metronom if self.metronom else 0
@@ -733,6 +777,12 @@ class Fereastra(wx.Frame):
         self.redare.bucla = self.m_bucla.IsChecked()
         self.redare.canta(redare.scrie_temporar(date), de_la_ms, in_pauza)
         self._redat = (sel, self.procent, metronom)
+        # unde începe fiecare măsură în ce se cântă (pentru J și L în timpul redării, ca la un player)
+        try:
+            masuri = self._midi_cache[3]
+            self._harta = list(zip(redare.milisecunde(date, [q for q, _n in masuri]), [n for _q, n in masuri]))
+        except Exception:
+            self._harta = []
 
     def _portative_alese(self):
         k = self.portative.GetSelection()
@@ -1776,9 +1826,11 @@ class Fereastra(wx.Frame):
             if not shift and (k == ord('I') or r == 0x49):
                 self.reda(True); return
             if not shift and (k == ord('L') or r == 0x4C):
-                self.muta(1); return
+                self.inainte_inapoi(1); return
             if not shift and (k == ord('J') or r == 0x4A):
-                self.muta(-1); return
+                self.inainte_inapoi(-1); return
+            if k == wx.WXK_ESCAPE and self.redare.stare in ('canta', 'pauza'):
+                self.opreste_redarea(); return
         e.Skip()
 
     def comuta_bucla(self, e=None):
