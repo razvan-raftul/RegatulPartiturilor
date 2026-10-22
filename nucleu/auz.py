@@ -16,7 +16,12 @@ ACORDURI = [(_('Major'), [0, 4, 7]), (_('Minor'), [0, 3, 7]), (_('Micșorat'), [
             (_('Minor major 7'), [0, 3, 7, 11]), (_('Semidiminuat 7'), [0, 3, 6, 10]), (_('Diminuat 7'), [0, 3, 6, 9])]
 RASTURNARI = [_('Poziție fundamentală'), _('Răsturnarea I'), _('Răsturnarea II'), _('Răsturnarea III')]
 
-EXERCITII = [_('Note'), _('Intervale'), _('Acorduri')]
+EXERCITII = [_('Note'), _('Intervale'), _('Acorduri'), _('Durate (ritm)')]
+
+# duratele: (nume, câte bătăi de pătrime ține, cum se scrie cu cifre)
+DURATE = [(_('întreagă'), 4.0, '4'), (_('doime cu punct'), 3.0, '3'), (_('doime'), 2.0, '2'),
+          (_('pătrime cu punct'), 1.5, '1 1/2'), (_('pătrime'), 1.0, '1'), (_('optime cu punct'), 0.75, '3/4'),
+          (_('optime'), 0.5, '1/2'), (_('șaisprezecime'), 0.25, '1/4')]
 IZOLARE = [_('Toate la fel de des'), _('Mai des cele bifate'), _('Doar cele bifate')]
 
 
@@ -35,6 +40,9 @@ class Setari:
     fundamentala: bool = False
     greseli_pana_la_raspuns: int = 2
     instrument: list = field(default_factory=lambda: [0, 0])   # (bancă, program); implicit pian
+    durate_bifate: list = field(default_factory=list)      # indici în DURATE
+    numar_durate: int = 3              # câte sunete se cântă la exercițiul de durate
+    tempo_durate: int = 80             # bătăi pe minut (pătrimea)
 
 
 @dataclass
@@ -51,6 +59,7 @@ class Exercitiu:
     intrebari: list
     pasi: list
     descriere: str                     # ce s-a cântat, spus la răspunsul arătat
+    durate: list = None                # la exercițiul de durate: bătăile fiecărui sunet (răspunsul se scrie)
 
 
 def nume_note(litere):
@@ -100,6 +109,8 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
         et, idx = _optiuni(INTERVALE, s.intervale_bifate, s.izolare)
         return Exercitiu([Intrebare(_('Ascultă intervalul și alege denumirea corectă.'), et, idx.index(st))], pasi,
                          _('Intervalul era {0}, de la {1}.', INTERVALE[st], numele[jos % 12]))
+    if s.exercitiu == 3:
+        return _genereaza_durate(s, rnd)
     # acorduri
     k = _alege(len(ACORDURI), s.acorduri_bifate, s.izolare, rnd)
     nume, structura = ACORDURI[k]
@@ -124,6 +135,100 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
     pasi = [(note_, 1600, 250)] + [([n], 350, 0) for n in note_] + [(note_, 1400, 0)]
     descriere = _('Acordul era {0} pe {1}', nume, numele[rad_pc]) + (f', {RASTURNARI[inv]}' if s.rasturnari else '') + '.'
     return Exercitiu(intrebari, pasi, descriere)
+
+
+def nume_durata(batai):
+    for nume, b, cifre in DURATE:
+        if abs(b - batai) < 1e-6:
+            return f'{nume} ({cifre})'
+    return str(batai)
+
+
+def _genereaza_durate(s, rnd):
+    """Câteva sunete pe aceeași notă, după 4 bătăi de numărătoare (ca să se știe cât ține o pătrime)."""
+    n = max(1, min(8, int(s.numar_durate or 3)))
+    bata = 60000 / max(30, min(240, int(s.tempo_durate or 80)))
+    alese = [_alege(len(DURATE), s.durate_bifate, s.izolare, rnd) for _x in range(n)]
+    batai = [DURATE[i][1] for i in alese]
+    o = rnd.choice(sorted(set(s.octave)) or [4])
+    nota = 12 * (o + 1) + rnd.choice([0, 2, 4, 5, 7, 9])
+    pasi = [([nota + 12], 70, int(bata - 70)) for _x in range(4)]             # numărătoarea: 4 bătăi scurte, sus
+    for b in batai:
+        lung = b * bata
+        pasi.append(([nota], int(lung * 0.9), int(lung * 0.1)))
+    q = Intrebare(_('Ascultă: întâi 4 bătăi de numărătoare, apoi {0} sunete. Scrie duratele lor, despărțite prin virgulă (de exemplu 2, 1/2 sau doime, optime).', n), [], -1)
+    return Exercitiu([q], pasi, _('Duratele erau: {0}.', ', '.join(nume_durata(b) for b in batai)), durate=batai)
+
+
+_CUVINTE_DURATE = {
+    'intreaga': 4.0, 'intreg': 4.0, 'nota intreaga': 4.0, 'doime': 2.0, 'patrime': 1.0, 'optime': 0.5,
+    'saisprezecime': 0.25, 'saisprezecimi': 0.25, 'doimi': 2.0, 'patrimi': 1.0, 'optimi': 0.5,
+    # în limbile programului
+    'whole': 4.0, 'half': 2.0, 'quarter': 1.0, 'eighth': 0.5, 'sixteenth': 0.25,
+}
+_FRACTII = {'½': 0.5, '¼': 0.25, '¾': 0.75, '⅛': 0.125}
+
+
+def _fara_diacritice(t):
+    for a, b in (('ă', 'a'), ('â', 'a'), ('î', 'i'), ('ș', 's'), ('ş', 's'), ('ț', 't'), ('ţ', 't')):
+        t = t.replace(a, b)
+    return t
+
+
+def _o_durata(t):
+    """„2”, „1/2”, „½”, „1 1/2”, „1.5”, „doime”, „pătrime cu punct”, „doi”... în bătăi; None dacă nu se înțelege."""
+    t = _fara_diacritice(t.strip().lower()).rstrip('.')
+    if not t:
+        return None
+    punct = 1.0
+    for coada in (' cu punct', ' punctata', ' punctat', ' cu punctul'):
+        if t.endswith(coada):
+            t, punct = t[:-len(coada)].strip(), 1.5
+    numere = {'unu': '1', 'una': '1', 'o': '1', 'doi': '2', 'doua': '2', 'trei': '3', 'patru': '4', 'jumatate': '1/2',
+              'o jumatate': '1/2', 'un sfert': '1/4', 'sfert': '1/4', 'trei sferturi': '3/4'}
+    t = numere.get(t, t)
+    if t in _CUVINTE_DURATE:
+        return _CUVINTE_DURATE[t] * punct
+    for f, v in _FRACTII.items():
+        if t.endswith(f):
+            intreg = t[:-1].strip()
+            try:
+                return ((float(intreg) if intreg else 0) + v) * punct
+            except ValueError:
+                return None
+    try:
+        parti = t.split()
+        total = 0.0
+        for p in parti:
+            if '/' in p:
+                a, b = p.split('/', 1)
+                total += float(a) / float(b)
+            else:
+                total += float(p.replace(',', '.'))
+        return total * punct
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def citeste_durate(text, asteptate=None):
+    """Răspunsul scris: o listă de bătăi, sau None dacă ceva nu se înțelege.
+    Se despart prin virgulă, punct și virgulă sau „și”; dacă sunt doar cifre, merg și spațiile
+    (atunci „1 1/2” e o singură durată, afară de cazul când se așteaptă exact atâtea sunete câte cifre sunt)."""
+    import re
+    t = _fara_diacritice(text.lower())
+    bucati = [b for b in re.split(r'[;,]|\bsi\b', t) if b.strip()]
+    if len(bucati) == 1:
+        cuvinte = bucati[0].split()
+        if _o_durata(bucati[0]) is None or (asteptate and asteptate > 1 and len(cuvinte) == asteptate
+                                            and all(_o_durata(c) is not None for c in cuvinte)):
+            bucati = cuvinte                       # „2 1/2 1”: despărțite doar prin spațiu
+    rez = []
+    for b in bucati:
+        v = _o_durata(b)
+        if v is None:
+            return None
+        rez.append(v)
+    return rez or None
 
 
 class Scor:
@@ -178,10 +283,24 @@ class Sesiune:
             self.scor.gresite += 1
             self.scor.serie = 0
         if self.greseli >= max(1, self.setari.greseli_pana_la_raspuns):
-            corect = q.optiuni[q.corect]
+            corect = q.optiuni[q.corect] if q.optiuni else ', '.join(nume_durata(b) for b in self.ex.durate)
             self.scor.total += 1
             self.pas = len(self.ex.intrebari)
             self.ultimul = 'aratat'
             return _('Răspuns greșit. Răspunsul corect era {0}. {1}', corect, self.ex.descriere), True
         self.ultimul = 'gresit'
         return _('Răspuns greșit. Mai încearcă.'), False
+
+    def raspunde_text(self, text):
+        """Răspunsul scris la exercițiul de durate. Întoarce (mesaj, gata); dacă nu se înțelege, nu e greșeală."""
+        if self.ex is None or self.ex.durate is None or self.intrebare is None:
+            return _('Începe un exercițiu nou.'), True
+        date = citeste_durate(text, len(self.ex.durate))
+        if date is None:
+            return _('Nu am înțeles. Scrie duratele despărțite prin virgulă, de exemplu 2, 1/2 sau doime, optime.'), False
+        q = self.intrebare
+        bine = len(date) == len(self.ex.durate) and all(abs(a - b) < 1e-6 for a, b in zip(date, self.ex.durate))
+        if not bine and len(date) != len(self.ex.durate):
+            # nu e greșeală de durate: ai scris alt număr de sunete
+            return _('Am auzit {0} sunete, tu ai scris {1}. Mai încearcă.', len(self.ex.durate), len(date)), False
+        return self.raspunde(q.corect if bine else q.corect - 1)
