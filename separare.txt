@@ -1,4 +1,0 @@
-# Programul de separare al pieselor (vocea, tobele, basul... despărțite) și de schimbare a tonalității.
-# Se face pe GitHub în workflow-ul „separare” (Demucs 4.0.1 cu modelele htdemucs și htdemucs_6s, ffmpeg cu rubberband).
-# Music Box îl descarcă singur prima dată când îl folosești; dacă se schimbă linia de mai jos, îl descarcă din nou.
-Separare = demucs 4.0.1, htdemucs + htdemucs_6s, ffmpeg rubberband, v1
