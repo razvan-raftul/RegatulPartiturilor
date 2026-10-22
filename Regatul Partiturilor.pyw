@@ -66,7 +66,7 @@ Control plus Shift plus M: metronomul pornit sau oprit.
 Shift plus plus: metronomul mai tare cu 1 la sută. Shift plus minus: mai încet cu 1 la sută.
 Control plus Shift plus plus: mai tare cu 5 la sută. Control plus Shift plus minus: mai încet cu 5 la sută.
 Control plus 5: fila Scrie o partitură (scrii tu notele, pentru mâna dreaptă și stânga, apoi asculți și salvezi ca MusicXML sau BRF).
-În câmpurile mâinilor: Control plus Enter ascultă măsura pe care ești (ambele mâini), F2 spune pe ce măsură ești.
+În câmpurile mâinilor: Control plus Enter ascultă măsura pe care ești (ambele mâini), Control plus F2 spune pe ce măsură ești.
 Control plus 6: exerciții de auz (programul cântă o notă, un interval sau un acord și tu alegi ce ai auzit).
 Acolo: Alt plus E te duce la lista Răspunsuri, Enter răspunde, virgulă ascultă din nou, punct dă un exercițiu nou.
 Control plus 7: fila Setări (limba, metronomul și volumul lui, instrumentul claviaturii, clapa MIDI, întârzierea sunetului, unde sunt programele de recunoaștere).
@@ -228,7 +228,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 2): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 2): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -567,6 +567,7 @@ class Fereastra(wx.Frame):
         self.lista.SetSelection(0)
         self.actualizeaza()
         self.SetStatusText(_('Deschisă: {0}. {1} măsuri.', P.titlu, len(P.numere)))
+        self.p_player.reimprospateaza()
         self.lista.SetFocus()
         if fis_brf:
             self.mesaj(_('Gata. Fișierul Braille e salvat în Documente, în folderul Music Box, la {0}, cu numele {1}.\n\n', os.path.basename(os.path.dirname(fis_brf)), os.path.basename(fis_brf)) +
@@ -1744,11 +1745,180 @@ class Fereastra(wx.Frame):
         if isinstance(pag, scrolled.ScrolledPanel):
             pag.ScrollChildIntoView(urm)
 
+    _NUME_TASTE = {wx.WXK_SPACE: 'spațiu', wx.WXK_RETURN: 'Enter', wx.WXK_NUMPAD_ENTER: 'Enter', wx.WXK_ESCAPE: 'Escape',
+                   wx.WXK_TAB: 'Tab', wx.WXK_BACK: 'Backspace', wx.WXK_DELETE: 'Delete', wx.WXK_HOME: 'Home', wx.WXK_END: 'End',
+                   wx.WXK_LEFT: 'săgeată stânga', wx.WXK_RIGHT: 'săgeată dreapta', wx.WXK_UP: 'săgeată sus',
+                   wx.WXK_DOWN: 'săgeată jos', wx.WXK_PAGEUP: 'Page Up', wx.WXK_PAGEDOWN: 'Page Down', wx.WXK_INSERT: 'Insert',
+                   wx.WXK_SHIFT: 'Shift', wx.WXK_CONTROL: 'Control', wx.WXK_ALT: 'Alt'}
+
+    def _nume_tasta(self, e):
+        k = e.GetKeyCode()
+        parti = []
+        if e.ControlDown() and k != wx.WXK_CONTROL:
+            parti.append('Control')
+        if e.AltDown() and k != wx.WXK_ALT:
+            parti.append('Alt')
+        if e.ShiftDown() and k != wx.WXK_SHIFT:
+            parti.append('Shift')
+        if k in self._NUME_TASTE:
+            nume = self._NUME_TASTE[k]
+            nume = {'spațiu': _('spațiu'), 'săgeată stânga': _('săgeată stânga'), 'săgeată dreapta': _('săgeată dreapta'),
+                    'săgeată sus': _('săgeată sus'), 'săgeată jos': _('săgeată jos')}.get(nume, nume)
+        elif wx.WXK_F1 <= k <= wx.WXK_F24:
+            nume = f'F{k - wx.WXK_F1 + 1}'
+        elif k == ord(',') or k == ord('.'):
+            nume = _('virgulă') if k == ord(',') else _('punct')
+        elif 32 < k < 127:
+            nume = chr(k).upper()
+        else:
+            u = e.GetUnicodeKey()
+            nume = chr(u).upper() if u and u > 32 else str(k)
+        return ' '.join(parti + [nume])
+
+    def _acceleratori(self):
+        """Scurtăturile din meniuri („Ctrl+Shift+B” -> textul comenzii), pentru ajutorul la taste."""
+        if getattr(self, '_acc', None) is None:
+            self._acc = {}
+            mb = self.GetMenuBar()
+            for i in range(mb.GetMenuCount()):
+                for it in mb.GetMenu(i).GetMenuItems():
+                    eticheta = it.GetItemLabel()
+                    if '\t' in eticheta:
+                        text, acc = eticheta.split('\t', 1)
+                        parti = [x.strip().lower() for x in acc.split('+')]
+                        self._acc[(frozenset(parti[:-1]), parti[-1])] = text.replace('&', '').rstrip('. ')
+        return self._acc
+
+    def _descrie_tasta(self, e, foc):
+        """Ce face tasta apăsată acum, în fila deschisă (pentru ajutorul la taste)."""
+        k = e.GetKeyCode()
+        sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+        tasta = self._nume_tasta(e)
+        ctrl, alt, shift = e.ControlDown(), e.AltDown(), e.ShiftDown()
+
+        def zi(text):
+            return f'{tasta}: {text}'
+        if k == wx.WXK_F1:
+            return zi(_('scurtăturile, în cuvinte.'))
+        # scurtăturile din meniuri (Control 1, Control O, Control Shift B...)
+        mods = frozenset(m for m, da in (('ctrl', ctrl), ('alt', alt), ('shift', shift)) if da)
+        if wx.WXK_F1 <= k <= wx.WXK_F24:
+            cheie = f'f{k - wx.WXK_F1 + 1}'
+        elif k in (wx.WXK_LEFT, wx.WXK_RIGHT):
+            cheie = 'left' if k == wx.WXK_LEFT else 'right'
+        elif 32 < k < 127:
+            cheie = chr(k).lower()
+        else:
+            cheie = None
+        if cheie and mods:
+            text = self._acceleratori().get((mods, cheie))
+            if text:
+                return zi(text)
+        pag = self.carte.GetCurrentPage()
+        # claviatura
+        if foc is self.t_clav:
+            if k == wx.WXK_ESCAPE:
+                return zi(_('ieși din claviatură.'))
+            if k in (wx.WXK_LEFT, wx.WXK_RIGHT):
+                if ctrl:
+                    return zi(_('transpui cu un semiton în sus.') if k == wx.WXK_RIGHT else _('transpui cu un semiton în jos.'))
+                return zi(_('octava mai sus.') if k == wx.WXK_RIGHT else _('octava mai jos.'))
+            if k in (wx.WXK_UP, wx.WXK_DOWN):
+                return zi(_('instrumentul următor.') if k == wx.WXK_DOWN else _('instrumentul anterior.'))
+            if k == wx.WXK_SPACE:
+                return zi(_('deschide sau închide categoria de instrumente.'))
+            if sc == claviatura.TASTA_BENDER:
+                return zi(_('nota tremură cât ții tasta.'))
+            if sc in claviatura.TASTE:
+                n = self.do_clav + claviatura.TASTE[sc] + self.transpunere
+                return zi(_('nota {0} {1}.', auz.SOLFEGIU[n % 12].lower(), n // 12 - 1))
+            return zi(_('nu face nimic în claviatură.'))
+        # player
+        if pag is self.p_player and not (ctrl or alt or shift):
+            d = {ord('K'): _('pornește, pune pauză și continuă.'), wx.WXK_SPACE: _('pornește, pune pauză și continuă.'),
+                 ord('L'): _('înainte 5 secunde.'), ord('J'): _('înapoi 5 secunde.'),
+                 ord('I'): _('spune minutul și secunda la care ești și măsura.'), wx.WXK_HOME: _('de la început.'),
+                 wx.WXK_ESCAPE: _('oprește.'), wx.WXK_TAB: _('rămâi în player.')}
+            for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17)):
+                if sc == sck:
+                    k = kk
+            if k in d:
+                return zi(d[k])
+        # scrie o partitură
+        if foc in (self.w_dr, self.w_st):
+            if ctrl and k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                return zi(_('asculți măsura pe care ești, cu ambele mâini.'))
+            if ctrl and k == wx.WXK_F2:
+                return zi(_('spune pe ce măsură ești.'))
+            return zi(_('scrii notele în câmp.'))
+        # exerciții de auz
+        if pag is self.p_auz:
+            if alt and (k == ord('E') or sc == 0x12):
+                return zi(_('mergi la răspunsuri.'))
+            if foc in (self.a_rasp, self.a_text) and k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                return zi(_('răspunde.'))
+            if not (ctrl or alt) and (k == ord(',') or sc == 0x33):
+                return zi(_('ascultă din nou.'))
+            if not (ctrl or alt) and (k == ord('.') or sc == 0x34):
+                return zi(_('exercițiu nou.'))
+        # într-un câmp în care scrii, literele se scriu
+        if isinstance(foc, (wx.TextCtrl, wx.SpinCtrl)) and (not isinstance(foc, wx.TextCtrl) or foc.IsEditable()):
+            return zi(_('scrie în câmp.'))
+        # tastele de redare (în celelalte file)
+        if pag not in (self.p_player, self.p_setari, self.p_scriere, self.p_auz) or foc is self.lista:
+            for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17)):
+                if sc == sck:
+                    k = kk
+            if not ctrl and not alt:
+                if k == ord('K'):
+                    return zi(_('Reia de la început (Shift K)') if shift else _('Redă, oprește sau continuă (K)'))
+                if k == ord('I') and not shift:
+                    return zi(_('Redă de la măsura aleasă până la final (I)'))
+                if k == ord('L') and not shift:
+                    return zi(_('Măsura următoare (L)\tAlt+Right').split('\t')[0])
+                if k == ord('J') and not shift:
+                    return zi(_('Măsura anterioară (J)\tAlt+Left').split('\t')[0])
+        r = e.GetRawKeyCode() if os.name == 'nt' else 0
+        if shift and not alt:
+            if not ctrl and (k == ord('1') or r == 0x31):
+                return zi(_('Mai rar cu 5 la sută (Shift 1)'))
+            if not ctrl and (k == ord('2') or r == 0x32):
+                return zi(_('Mai repede cu 5 la sută (Shift 2)'))
+            if not ctrl and (k in (ord('3'), ord('0')) or r in (0x33, 0x30)):
+                return zi(_('Tempoul scris în piesă (Shift 3)'))
+            plus = sc in (0x0D, 0x4E) or k in (wx.WXK_NUMPAD_ADD, ord('+'), ord('='))
+            minus = sc in (0x0C, 0x4A) or k in (wx.WXK_NUMPAD_SUBTRACT, ord('-'), ord('_'))
+            if plus:
+                return zi(_('Metronomul mai tare cu 5 la sută (Control Shift plus)') if ctrl else _('Metronomul mai tare cu 1 la sută (Shift plus)'))
+            if minus:
+                return zi(_('Metronomul mai încet cu 5 la sută (Control Shift minus)') if ctrl else _('Metronomul mai încet cu 1 la sută (Shift minus)'))
+        if ctrl and k == wx.WXK_TAB:
+            return zi(_('fila anterioară.') if shift else _('fila următoare.'))
+        if k == wx.WXK_TAB:
+            return zi(_('elementul anterior.') if shift else _('elementul următor.'))
+        return zi(_('nu face nimic aici.'))
+
     def _taste(self, e):
         """Tastele de redare, prinse direct din tastatură (după tasta fizică, oricare ar fi aranjarea tastaturii):
         Shift 1 / 2 / 3 tempoul; K redă, oprește, continuă; Shift K de la început; L și J măsura următoare și anterioară;
         Shift plus / minus volumul metronomului cu 1, cu Control cu 5. Nu se prind când scrii într-un câmp."""
         foc = wx.Window.FindFocus()
+        # F2: ajutorul la taste; cât e pornit, orice tastă spune ce face (în fila deschisă), fără s-o facă
+        if e.GetKeyCode() == wx.WXK_F2 and not e.ControlDown() and not e.AltDown() and not e.ShiftDown():
+            self._ajutor_taste = not getattr(self, '_ajutor_taste', False)
+            voce.spune(_('Ajutor la taste pornit. Apasă orice tastă și îți spun ce face. F2 sau Escape ies.') if self._ajutor_taste
+                       else _('Ajutor la taste oprit.'), intrerupe=True)
+            return
+        if getattr(self, '_ajutor_taste', False):
+            if e.GetKeyCode() == wx.WXK_ESCAPE:
+                self._ajutor_taste = False
+                voce.spune(_('Ajutor la taste oprit.'), intrerupe=True)
+                return
+            if e.GetKeyCode() in (wx.WXK_SHIFT, wx.WXK_CONTROL, wx.WXK_ALT, wx.WXK_WINDOWS_LEFT, wx.WXK_WINDOWS_RIGHT) and \
+                    not (os.name == 'nt' and ((e.GetRawKeyFlags() >> 16) & 0xFF) == claviatura.TASTA_BENDER and foc is self.t_clav):
+                return
+            voce.spune(self._descrie_tasta(e, foc), intrerupe=True)
+            return
         if foc is self.t_clav:
             self._clav_apasa(e)
             return
@@ -1783,8 +1953,8 @@ class Fereastra(wx.Frame):
             if e.ControlDown() and e.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 self.scriere_asculta(masura=True)
                 return
-            if e.GetKeyCode() == wx.WXK_F2:
-                self.scriere_spune_masura()
+            if e.GetKeyCode() == wx.WXK_F2 and e.ControlDown():
+                self.scriere_spune_masura()          # Control F2 (F2 singur e ajutorul la taste)
                 return
         if self.carte.GetCurrentPage() is self.p_auz and (foc is None or self._e_in(foc, self.p_auz) or foc is self.carte):
             sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
@@ -2172,11 +2342,15 @@ class PaginaPlayer(wx.Panel):
         super().__init__(carte)
         self.f = fereastra
         s = wx.BoxSizer(wx.VERTICAL)
-        s.Add(wx.StaticText(self, label=_('Player')), 0, wx.ALL, 2)
-        self.t = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY, name=_('Player'),
-                             value=_('Player. K pornește și pune pauză, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, Home de la început, Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M) merg și aici.'))
-        s.Add(self.t, 1, wx.EXPAND | wx.ALL, 2)
+        # un singur rând, fără etichetă: NVDA spune doar piesa (scurtăturile sunt la F1)
+        self.t = wx.TextCtrl(self, style=wx.TE_READONLY, name='', value=_('Nicio piesă deschisă.'))
+        s.Add(self.t, 0, wx.EXPAND | wx.ALL, 2)
         self.SetSizer(s)
+
+    def reimprospateaza(self):
+        """Arată piesa deschisă (sau că nu e niciuna)."""
+        P = self.f.P
+        self.t.SetValue(P.titlu if P else _('Nicio piesă deschisă.'))
 
     @property
     def sel(self):
@@ -2223,6 +2397,10 @@ class PaginaPlayer(wx.Panel):
         """Tastele playerului; întoarce True dacă a folosit tasta."""
         k = e.GetKeyCode()
         sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+        if k == wx.WXK_TAB and not e.ControlDown() and not e.AltDown():
+            # în player nu e nimic altceva de ales: Tab rămâne aici (nu trece la măsuri și opțiuni)
+            voce.spune(self.t.GetValue(), intrerupe=True)
+            return True
         if e.ControlDown() or e.AltDown() or e.ShiftDown():
             return False
         if not self.f.P:
