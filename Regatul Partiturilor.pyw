@@ -227,7 +227,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 3): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; Home o ia de la început; Escape oprește.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 3): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -2175,7 +2175,7 @@ class PaginaPlayer(wx.Panel):
         s = wx.BoxSizer(wx.VERTICAL)
         s.Add(wx.StaticText(self, label=_('Player')), 0, wx.ALL, 2)
         self.t = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY, name=_('Player'),
-                             value=_('Player. K pornește și pune pauză, L înainte 5 secunde, J înapoi 5 secunde, Home de la început, Escape oprește.'))
+                             value=_('Player. K pornește și pune pauză, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, Home de la început, Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M) merg și aici.'))
         s.Add(self.t, 1, wx.EXPAND | wx.ALL, 2)
         self.SetSizer(s)
 
@@ -2209,15 +2209,16 @@ class PaginaPlayer(wx.Panel):
         sec = max(0, int(ms // 1000))
         return f'{sec // 60}:{sec % 60:02d}'
 
-    def _unde(self, ms):
-        """„1:05 din 3:20, măsura 12”: spus de NVDA după fiecare derulare."""
+    def _unde(self, ms, spune=False):
+        """„1:05 din 3:20, măsura 12”: scris în player; NVDA îl spune doar la I."""
         text = _('{0} din {1}', self._timp(ms), self._timp(self._lungime()))
         harta = getattr(self.f, '_harta', [])
         nr = [n for t, n in harta if t <= ms + 50]
         if nr:
             text += ', ' + (_('Anacruza') if nr[-1] == 0 else _('Măsura {0}', nr[-1]).lower())
         self.t.SetValue(text)
-        voce.spune(text, intrerupe=True)
+        if spune:
+            voce.spune(text, intrerupe=True)
 
     def tasta(self, e):
         """Tastele playerului; întoarce True dacă a folosit tasta."""
@@ -2242,12 +2243,13 @@ class PaginaPlayer(wx.Panel):
         if k == ord('K') or sc == 0x25 or k == wx.WXK_SPACE:
             terminat_inainte = r.stare != 'oprit' and r.terminat()
             if r.stare == 'oprit' or terminat_inainte:
-                pornit = r.stare == 'oprit' and not terminat_inainte
                 self._porneste(0)
-                voce.spune(_('Pornit.') if pornit else _('De la început.'), intrerupe=True)
             else:
-                st = r.pauza_continua()
-                voce.spune(_('Pauză.') if st == 'pauza' else _('Continuă.'), intrerupe=True)
+                r.pauza_continua()             # fără să spună nimic (cerut de Răzvan)
+            return True
+        if k == ord('I') or sc == 0x17:
+            # I: unde ești (minutul și secunda din cât ține piesa, și măsura)
+            self._unde(r.pozitie() if r.stare != 'oprit' else 0, spune=True)
             return True
         if k in (ord('J'), ord('L')) or sc in (0x24, 0x26):
             inainte = k == ord('L') or sc == 0x26
