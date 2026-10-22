@@ -22,6 +22,26 @@ def folder_setari():
     return nou
 
 
+def folder_documente():
+    """Documente\\Music Box: aici merge tot ce face programul (piesele recunoscute, Braille, cuprinsuri, ce salvezi).
+    Se creează singur."""
+    docs = ''
+    if os.name == 'nt':
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(260)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0:      # CSIDL_PERSONAL: Documente
+                docs = buf.value
+        except Exception:
+            docs = ''
+    d = os.path.join(docs or os.path.join(os.path.expanduser('~'), 'Documents'), 'Music Box')
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
 DIR_SETARI = folder_setari()
 FIS_SETARI = os.path.join(DIR_SETARI, 'setari.json')
 

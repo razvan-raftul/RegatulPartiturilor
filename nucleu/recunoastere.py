@@ -106,7 +106,13 @@ def gaseste_homr():
 
 def folder_rezultate(cale_sursa: str) -> str:
     """Tot ce face programul pentru un PDF (cuprins, piese recunoscute, Braille) stă în
-    Recunoscute\\<numele PDF-ului>, lângă PDF, ca folderul cu PDF-uri să rămână curat."""
+    Documente\\Music Box\\<numele PDF-ului> (cerut de Răzvan pe 22 oct. 2026; înainte era Recunoscute, lângă PDF)."""
+    from .limba import folder_documente
+    return os.path.join(folder_documente(), os.path.splitext(os.path.basename(cale_sursa))[0])
+
+
+def folder_rezultate_vechi(cale_sursa: str) -> str:
+    """Locul de dinainte: Recunoscute\\<numele PDF-ului>, lângă PDF."""
     d = os.path.dirname(os.path.abspath(cale_sursa))
     return os.path.join(d, 'Recunoscute', os.path.splitext(os.path.basename(cale_sursa))[0])
 
@@ -168,6 +174,16 @@ def din_imagine(cale: str, progres=None, pastreaza=True, baza=None, folder=None,
     raport = os.path.join(dest, scurt + ' - de verificat.txt')
     # locul vechi (versiunile de dinainte de 16 oct. 2026): direct în Recunoscute, cu numele întreg
     vechi = os.path.join(folder or os.path.dirname(os.path.abspath(sursa)), 'Recunoscute')
+    # locul de dinainte de 22 oct. 2026: Recunoscute\<numele PDF-ului>, lângă PDF; se copiază în Documente\Music Box
+    vechi2 = folder_rezultate_vechi(sursa)
+    if pastreaza and not os.path.isfile(final) and os.path.isfile(os.path.join(vechi2, scurt + ' - verificat.musicxml')):
+        try:
+            os.makedirs(dest, exist_ok=True)
+            for f in os.listdir(vechi2):
+                if os.path.isfile(os.path.join(vechi2, f)) and not os.path.exists(os.path.join(dest, f)):
+                    shutil.copy2(os.path.join(vechi2, f), os.path.join(dest, f))
+        except OSError:
+            pass
     if pastreaza and not os.path.isfile(final) and os.path.isfile(os.path.join(vechi, baza + ' - verificat.musicxml')):
         try:
             os.makedirs(dest, exist_ok=True)

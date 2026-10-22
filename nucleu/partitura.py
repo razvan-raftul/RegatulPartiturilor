@@ -210,7 +210,7 @@ def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, ori
         scor = r.scor
         nesigure = r.nesigure
         if not r.programe:
-            avert.append(_('Partitura a fost recunoscută mai devreme; am deschis rezultatul salvat în folderul Recunoscute.'))
+            avert.append(_('Partitura a fost recunoscută mai devreme; am deschis rezultatul salvat în Documente, în folderul Music Box.'))
         elif len(r.programe) > 1:
             avert.append(_('Partitura a fost recunoscută din imagine de {0} programe ({1}), comparate măsură cu măsură.', len(r.programe), ", ".join(r.programe)))
         else:

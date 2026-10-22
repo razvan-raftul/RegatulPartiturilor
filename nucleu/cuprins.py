@@ -564,7 +564,13 @@ def gaseste(cale_pdf: str, progres=None) -> dict:
 
 
 def cale_cuprins(cale_pdf: str) -> str:
-    """Cuprinsul stă în Recunoscute\\<numele PDF-ului>\\cuprins.json."""
+    """Cuprinsul stă în Documente\\Music Box\\<numele PDF-ului>\\cuprins.json."""
+    from .limba import folder_documente
+    return os.path.join(folder_documente(), os.path.splitext(os.path.basename(cale_pdf))[0], 'cuprins.json')
+
+
+def _cale_recunoscute(cale_pdf: str) -> str:
+    """Locul de dinainte de 22 oct. 2026: Recunoscute\\<numele PDF-ului>\\cuprins.json, lângă PDF."""
     d = os.path.dirname(os.path.abspath(cale_pdf))
     return os.path.join(d, 'Recunoscute', os.path.splitext(os.path.basename(cale_pdf))[0], 'cuprins.json')
 
@@ -575,6 +581,17 @@ def _cale_veche(cale_pdf: str) -> str:
 
 def incarca_sau_gaseste(cale_pdf: str, progres=None) -> dict:
     c = cale_cuprins(cale_pdf)
+    if not os.path.isfile(c) and os.path.isfile(_cale_recunoscute(cale_pdf)):
+        # cuprinsul (și orientarea paginilor) din locul vechi se copiază în Documente\Music Box
+        try:
+            import shutil
+            os.makedirs(os.path.dirname(c), exist_ok=True)
+            vechi = os.path.dirname(_cale_recunoscute(cale_pdf))
+            for f in ('cuprins.json', 'orientare.json'):
+                if os.path.isfile(os.path.join(vechi, f)):
+                    shutil.copy2(os.path.join(vechi, f), os.path.join(os.path.dirname(c), f))
+        except OSError:
+            pass
     if not os.path.isfile(c) and os.path.isfile(_cale_veche(cale_pdf)):
         # cuprins din versiunile vechi (lângă PDF): îl copiem la locul nou; pe cel vechi îl poți șterge
         try:
