@@ -41,12 +41,13 @@ L (sau Alt plus săgeată dreapta): măsura următoare.
 J (sau Alt plus săgeată stânga): măsura anterioară.
 Control plus G: mergi la o anumită măsură.
 Control plus 1: textul în cuvinte.
-Control plus 2: textul în Braille.
+Control plus 2: playerul (toată piesa; J și L derulează câte 5 secunde).
+Control plus 3: textul în Braille.
 Control plus 4: claviatura (cânți pe tastatură); Escape te scoate din ea.
 Control plus L: lista de măsuri.
 Control plus S: salvează textul în cuvinte.
 Control plus B: salvează Braille pentru imprimantă (fișier BRF).
-Control plus Shift plus B: din PDF în Braille, într-un singur pas (alegi PDF-ul, primești fișierul BRF în folderul Recunoscute, în subfolderul cu numele PDF-ului).
+Control plus Shift plus B: din PDF în Braille, într-un singur pas (alegi PDF-ul, primești fișierul BRF în Documente, în folderul Music Box, în subfolderul cu numele PDF-ului).
 La o carte cu multe pagini (de exemplu o culegere de studii), programul găsește singur unde începe fiecare piesă
 și te întreabă pe care o deschizi: Studiul 2, paginile 3-4, și așa mai departe. Poți alege și toată cartea
 sau scrie tu paginile. Se recunosc doar paginile alese, deci durează mult mai puțin.
@@ -198,8 +199,8 @@ class Fereastra(wx.Frame):
         self._m(n, _('Măsura de verificat anterioară\tCtrl+Shift+U'), lambda e: self.la_nesigura(-1))
         n.AppendSeparator()
         self._m(n, _('Textul în cuvinte\tCtrl+1'), lambda e: self.arata(0))
-        self._m(n, _('Textul în Braille\tCtrl+2'), lambda e: self.arata(1))
-        self._m(n, _('Player: toată piesa, derulezi cu J și L\tCtrl+3'), lambda e: self.arata(2))
+        self._m(n, _('Player: toată piesa, derulezi cu J și L\tCtrl+2'), lambda e: self.arata(1))
+        self._m(n, _('Textul în Braille\tCtrl+3'), lambda e: self.arata(2))
         self._m(n, _('Claviatura (cânți pe tastatură)\tCtrl+4'), lambda e: self.arata(3))
         self._m(n, _('Scrie o partitură\tCtrl+5'), lambda e: self.arata(4))
         self._m(n, _('Exerciții de auz\tCtrl+6'), lambda e: self.arata(5))
@@ -227,7 +228,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 3): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 2): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -286,9 +287,10 @@ class Fereastra(wx.Frame):
         sk.Add(self.t_clav, 1, wx.EXPAND | wx.ALL, 2)
         pk.SetSizer(sk)
         self.carte.AddPage(pc, _('În cuvinte'))
-        self.carte.AddPage(pb, _('Braille'))
         self.p_player = PaginaPlayer(self.carte, self)
         self.carte.AddPage(self.p_player, _('Player'))
+        self.p_braille = pb
+        self.carte.AddPage(pb, _('Braille'))
         self.carte.AddPage(pk, _('Claviatura'))
         self._fila_scriere()
         self._fila_auz()
@@ -480,7 +482,7 @@ class Fereastra(wx.Frame):
     def deschide(self, cale, pastreaza=True, titlu=None, dupa=None, brf=False, baza=None, folder=None, original=None,
                  fara_cuprins=False):
         """Deschide o partitură. pastreaza=False: nu se salvează nimic (pagini din aplicațiile editurilor);
-        titlu: numele afișat; dupa: funcție chemată la final (de exemplu ștergerea pozei); brf: salvează și BRF în Recunoscute\\<nume PDF>."""
+        titlu: numele afișat; dupa: funcție chemată la final (de exemplu ștergerea pozei); brf: salvează și BRF în Documente\\Music Box\\<nume PDF>."""
         if self._ocupat_recunoastere:
             self.mesaj(_('Încă se recunoaște partitura de dinainte. Așteaptă să se termine.'), _('Ocupat'))
             if dupa:
@@ -567,7 +569,7 @@ class Fereastra(wx.Frame):
         self.SetStatusText(_('Deschisă: {0}. {1} măsuri.', P.titlu, len(P.numere)))
         self.lista.SetFocus()
         if fis_brf:
-            self.mesaj(_('Gata. Fișierul Braille e salvat în folderul Recunoscute, la {0}, cu numele {1}.\n\n', os.path.basename(os.path.dirname(fis_brf)), os.path.basename(fis_brf)) +
+            self.mesaj(_('Gata. Fișierul Braille e salvat în Documente, în folderul Music Box, la {0}, cu numele {1}.\n\n', os.path.basename(os.path.dirname(fis_brf)), os.path.basename(fis_brf)) +
                        (_('Măsuri de verificat: {0} (', len(P.nesigure)) + ', '.join(str(n) for n in P.nesigure) + _('). '
                         'Lista lor cu motivele e în același folder, în fișierul „de verificat”.') if P.nesigure
                         else _('Toate măsurile au fost citite la fel de ambele programe.')), _('Din PDF în Braille'))
@@ -610,7 +612,7 @@ class Fereastra(wx.Frame):
         self.actualizeaza_braille()
 
     def actualizeaza_braille(self):
-        if not self.P or self.carte.GetSelection() != 1 or self.t_braille.GetValue():
+        if not self.P or self.carte.GetCurrentPage() is not self.p_braille or self.t_braille.GetValue():
             return
         s = self.selectie()
         if s is None:
@@ -635,8 +637,8 @@ class Fereastra(wx.Frame):
 
     def arata(self, pagina):
         self.carte.SetSelection(pagina)
-        (self.t_cuvinte, self.t_braille, self.p_player.t, self.t_clav, self.w_titlu, self.a_ex, self.s_limba)[pagina].SetFocus()
-        if pagina == 1:
+        (self.t_cuvinte, self.p_player.t, self.t_braille, self.t_clav, self.w_titlu, self.a_ex, self.s_limba)[pagina].SetFocus()
+        if self.carte.GetPage(pagina) is self.p_braille:
             self.actualizeaza_braille()
 
     def muta(self, pas):
@@ -651,7 +653,7 @@ class Fereastra(wx.Frame):
         self.lista.EnsureVisible(nou)
         self.actualizeaza()
         # cursorul rămâne unde e; NVDA spune doar măsura
-        if self.carte.GetSelection() == 1:
+        if self.carte.GetCurrentPage() is self.p_braille:
             self.actualizeaza_braille()
         voce.spune(self.lista.GetString(nou), intrerupe=True)
 
@@ -1155,12 +1157,7 @@ class Fereastra(wx.Frame):
         titlu = self.w_titlu.GetValue().strip() or _('Partitura mea')
         nume = ''.join(ch for ch in titlu if ch not in '\\/:*?"<>|') + ('.brf' if brf else '.musicxml')
         filtru = _('Braille pentru imprimantă (*.brf)|*.brf') if brf else _('MusicXML (*.musicxml)|*.musicxml')
-        with wx.FileDialog(self, _('Salvează ca BRF') if brf else _('Salvează ca MusicXML'),
-                           defaultDir=self.setari.get('folder_scriere', self.setari.get('folder', '')), defaultFile=nume,
-                           wildcard=filtru, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as d:
-            if d.ShowModal() != wx.ID_OK:
-                return
-            cale = d.GetPath()
+        cale = self._cere_salvare(_('Salvează ca BRF') if brf else _('Salvează ca MusicXML'), nume, filtru)
         try:
             if brf:
                 with open(cale, 'w', encoding='ascii', errors='replace', newline='') as f:
@@ -1171,10 +1168,7 @@ class Fereastra(wx.Frame):
             traceback.print_exc()
             self.mesaj(_('Nu am putut salva. Eroare: {0}', ex), _('Salvare'))
             return
-        self.setari['folder_scriere'] = os.path.dirname(cale)
-        scrie_setari(self.setari)
-        self.SetStatusText(_('Salvat: ') + cale)
-        voce.spune(_('Salvat.'), intrerupe=True)
+        self._anunta_salvat(cale)
 
     def scriere_noua(self, e=None):
         if (self.w_dr.GetValue().strip() or self.w_st.GetValue().strip()) and wx.MessageBox(
@@ -1905,9 +1899,14 @@ class Fereastra(wx.Frame):
 
     # ---------------- salvare ----------------
     def _cere_salvare(self, titlu, nume, filtru):
-        with wx.FileDialog(self, titlu, defaultDir=self.setari.get('folder', ''), defaultFile=nume, wildcard=filtru,
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as d:
-            return d.GetPath() if d.ShowModal() == wx.ID_OK else None
+        """Tot ce exporți merge singur în Documente\\Music Box, fără fereastră de salvare (cerut de Răzvan).
+        Un fișier cu același nume se înlocuiește, ca să fie mereu ultima variantă."""
+        nume = ''.join(ch for ch in nume if ch not in '\\/:*?"<>|')
+        return os.path.join(limba.folder_documente(), nume)
+
+    def _anunta_salvat(self, cale):
+        self.SetStatusText(_('Salvat: ') + cale)
+        voce.spune(_('Salvat în Documente, în folderul Music Box: {0}.', os.path.basename(cale)), intrerupe=True)
 
     def _interzis_salvare(self):
         if getattr(self.P, 'fara_salvare', False):
@@ -1926,7 +1925,7 @@ class Fereastra(wx.Frame):
         if cale:
             with open(cale, 'w', encoding='utf-8-sig') as f:
                 f.write(self.P.descriere_generala() + '\n\n' + self.t_cuvinte.GetValue())
-            self.SetStatusText(_('Salvat: ') + cale)
+            self._anunta_salvat(cale)
 
     def salveaza_braille(self, brf):
         if not self.P or self._interzis_salvare():
@@ -1947,7 +1946,7 @@ class Fereastra(wx.Frame):
         else:
             with open(cale, 'w', encoding='utf-8') as f:
                 f.write(txt)
-        self.SetStatusText(_('Salvat: ') + cale)
+        self._anunta_salvat(cale)
 
     def salveaza_musicxml(self, e=None):
         if not self.P or self._interzis_salvare():
@@ -1956,7 +1955,7 @@ class Fereastra(wx.Frame):
         if cale:
             s = self.selectie() or (self.P.numere[0], self.P.numere[-1], list(range(len(self.P.portative))))
             self.P.extrage(*s).write('musicxml', fp=cale)
-            self.SetStatusText(_('Salvat: ') + cale)
+            self._anunta_salvat(cale)
 
 
     # ---------------- altele ----------------
@@ -2370,7 +2369,7 @@ def autotest(fisier, iesire):
         culcata = os.path.join(d_pdf, 'culcata.pdf')
         dreapta.rotate(90, expand=True).save(culcata, 'PDF', resolution=100)
         rez.append('PAGINA CULCATA rotatii: ' + str(cuprins.rotatii(culcata)))
-        rez.append('CUPRINS in Recunoscute: ' + str(os.path.isfile(os.path.join(d_pdf, 'Recunoscute', 'carte', 'cuprins.json'))))
+        rez.append('CUPRINS in Documente Music Box: ' + str(os.path.isfile(os.path.join(limba.folder_documente(), 'carte', 'cuprins.json'))))
         from nucleu import verificare
         rez.append('MAINI impartite in exemplu: ' + str(verificare.imparte_mainile(P.scor)))
         shutil.rmtree(d_pdf, ignore_errors=True)
