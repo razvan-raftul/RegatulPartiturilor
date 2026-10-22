@@ -42,7 +42,7 @@ J (sau Alt plus săgeată stânga): măsura anterioară.
 Control plus G: mergi la o anumită măsură.
 Control plus 1: textul în cuvinte.
 Control plus 2: textul în Braille.
-Control plus 3: claviatura (cânți pe tastatură); Escape te scoate din ea.
+Control plus 4: claviatura (cânți pe tastatură); Escape te scoate din ea.
 Control plus L: lista de măsuri.
 Control plus S: salvează textul în cuvinte.
 Control plus B: salvează Braille pentru imprimantă (fișier BRF).
@@ -64,11 +64,11 @@ Metronomul (cântă bătăile măsurii odată cu piesa, mereu în tempoul ei):
 Control plus Shift plus M: metronomul pornit sau oprit.
 Shift plus plus: metronomul mai tare cu 1 la sută. Shift plus minus: mai încet cu 1 la sută.
 Control plus Shift plus plus: mai tare cu 5 la sută. Control plus Shift plus minus: mai încet cu 5 la sută.
-Control plus 4: fila Scrie o partitură (scrii tu notele, pentru mâna dreaptă și stânga, apoi asculți și salvezi ca MusicXML sau BRF).
+Control plus 5: fila Scrie o partitură (scrii tu notele, pentru mâna dreaptă și stânga, apoi asculți și salvezi ca MusicXML sau BRF).
 În câmpurile mâinilor: Control plus Enter ascultă măsura pe care ești (ambele mâini), F2 spune pe ce măsură ești.
-Control plus 5: exerciții de auz (programul cântă o notă, un interval sau un acord și tu alegi ce ai auzit).
+Control plus 6: exerciții de auz (programul cântă o notă, un interval sau un acord și tu alegi ce ai auzit).
 Acolo: Alt plus E te duce la lista Răspunsuri, Enter răspunde, virgulă ascultă din nou, punct dă un exercițiu nou.
-Control plus 6: fila Setări (limba, metronomul și volumul lui, instrumentul claviaturii, clapa MIDI, întârzierea sunetului, unde sunt programele de recunoaștere).
+Control plus 8: fila Setări (limba, metronomul și volumul lui, instrumentul claviaturii, clapa MIDI, întârzierea sunetului, unde sunt programele de recunoaștere).
 O clapă MIDI legată la calculator cântă cu sunetele programului, cu instrumentul claviaturii.
 
 Citește din fereastră (pentru aplicațiile editurilor, din care nu se poate descărca):
@@ -76,7 +76,7 @@ Control plus Alt plus P, apăsat din aplicația editurii: citește pagina afișa
 Control plus Shift plus F: alegi fereastra dintr-o listă.
 Nu se salvează nimic: poza paginii se șterge imediat după recunoaștere.
 
-Claviatura (Control plus 3), cât stai în ea celelalte taste nu mai fac nimic:
+Claviatura (Control plus 4), cât stai în ea celelalte taste nu mai fac nimic:
 Rândul de jos, de la Z la 3 de pe blocul numeric: do, re, mi, fa, sol, la, si, do și tot așa, două octave.
 Diezii sunt pe rândul de deasupra, cu o tastă mai la dreapta: S do diez, D re diez, F gol, G fa diez, H sol diez, J la diez, K gol, și tot așa.
 La fel, cu o octavă mai jos: rândul de la Tab (până la 6 de pe blocul numeric) sunt notele, iar diezii sunt pe cifre, de la 1 (3, 7 și 0 sunt goale).
@@ -84,7 +84,7 @@ Shift stânga e bender: cât îl ții apăsat, nota tremură.
 Săgeată dreapta sau stânga: o octavă mai sus sau mai jos (NVDA spune doar numărul octavei).
 Săgeată sus sau jos: alt instrument.
 Control plus săgeată dreapta sau stânga: transpui cu un semiton (ce era do se aude do diez).
-Escape sau Control plus 1: ieși din claviatură. Instrumentul se poate alege și din fila Setări (Control plus 6).
+Escape sau Control plus 1: ieși din claviatură. Instrumentul se poate alege și din fila Setări (Control plus 8).
 
 Tab și Shift plus Tab trec doar prin elementele filei deschise.
 F1: această listă.
@@ -199,11 +199,12 @@ class Fereastra(wx.Frame):
         n.AppendSeparator()
         self._m(n, _('Textul în cuvinte\tCtrl+1'), lambda e: self.arata(0))
         self._m(n, _('Textul în Braille\tCtrl+2'), lambda e: self.arata(1))
-        self._m(n, _('Claviatura (cânți pe tastatură)\tCtrl+3'), lambda e: self.arata(2))
-        self._m(n, _('Scrie o partitură\tCtrl+4'), lambda e: self.arata(3))
-        self._m(n, _('Exerciții de auz\tCtrl+5'), lambda e: self.arata(4))
-        self._m(n, _('Piese audio (separare și tonalitate)\tCtrl+6'), lambda e: self.arata(5))
-        self._m(n, _('Setările\tCtrl+7'), lambda e: self.arata(6))
+        self._m(n, _('Player: toată piesa, derulezi cu J și L\tCtrl+3'), lambda e: self.arata(2))
+        self._m(n, _('Claviatura (cânți pe tastatură)\tCtrl+4'), lambda e: self.arata(3))
+        self._m(n, _('Scrie o partitură\tCtrl+5'), lambda e: self.arata(4))
+        self._m(n, _('Exerciții de auz\tCtrl+6'), lambda e: self.arata(5))
+        self._m(n, _('Piese audio (separare și tonalitate)\tCtrl+7'), lambda e: self.arata(6))
+        self._m(n, _('Setările\tCtrl+8'), lambda e: self.arata(7))
         self._m(n, _('Lista de măsuri\tCtrl+L'), lambda e: self.lista.SetFocus())
         mb.Append(n, _('&Navigare'))
         r = wx.Menu()
@@ -211,9 +212,6 @@ class Fereastra(wx.Frame):
         self._m(r, _('Redă, oprește sau continuă (K)'), lambda e: self.reda_sau_pauza())
         self._m(r, _('Reia de la început (Shift K)'), lambda e: self.reda(False))
         self._m(r, _('Redă de la măsura aleasă până la final (I)'), lambda e: self.reda(True))
-        self._m(r, _('Înainte o măsură (L)'), lambda e: self.inainte_inapoi(1))
-        self._m(r, _('Înapoi o măsură (J)'), lambda e: self.inainte_inapoi(-1))
-        self._m(r, _('Oprește redarea (Escape)'), self.opreste_redarea)
         r.AppendSeparator()
         self._m(r, _('Mai rar cu 5 la sută (Shift 1)'), lambda e: self.schimba_tempo(-5))
         self._m(r, _('Mai repede cu 5 la sută (Shift 2)'), lambda e: self.schimba_tempo(5))
@@ -230,7 +228,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Ca la un player: K pornește de la măsura aleasă și cântă până la final (în buclă, doar măsura). În timp ce se cântă, L sare la măsura următoare, J la începutul măsurii, iar de două ori la cea dinainte; NVDA spune numărul măsurii. K pune pauză și continuă, Escape oprește. Când nu se cântă, L și J mută măsura aleasă, cursorul rămâne unde e și NVDA spune doar măsura.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 3): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; Home o ia de la început; Escape oprește.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -290,6 +288,8 @@ class Fereastra(wx.Frame):
         pk.SetSizer(sk)
         self.carte.AddPage(pc, _('În cuvinte'))
         self.carte.AddPage(pb, _('Braille'))
+        self.p_player = PaginaPlayer(self.carte, self)
+        self.carte.AddPage(self.p_player, _('Player'))
         self.carte.AddPage(pk, _('Claviatura'))
         self._fila_scriere()
         self._fila_auz()
@@ -637,7 +637,7 @@ class Fereastra(wx.Frame):
 
     def arata(self, pagina):
         self.carte.SetSelection(pagina)
-        (self.t_cuvinte, self.t_braille, self.t_clav, self.w_titlu, self.a_ex, self.b_piesa, self.s_limba)[pagina].SetFocus()
+        (self.t_cuvinte, self.t_braille, self.p_player.t, self.t_clav, self.w_titlu, self.a_ex, self.b_piesa, self.s_limba)[pagina].SetFocus()
         if pagina == 1:
             self.actualizeaza_braille()
 
@@ -656,36 +656,6 @@ class Fereastra(wx.Frame):
         if self.carte.GetSelection() == 1:
             self.actualizeaza_braille()
         voce.spune(self.lista.GetString(nou), intrerupe=True)
-
-    def inainte_inapoi(self, pas):
-        """L și J: în timpul redării sar la măsura următoare sau la începutul măsurii (de două ori: la cea dinainte),
-        ca la un player; altfel mută selecția cu o măsură."""
-        harta = getattr(self, '_harta', [])
-        if self.redare.stare not in ('canta', 'pauza') or not harta or self.redare.terminat():
-            self.muta(pas)
-            return
-        poz = self.redare.pozitie()
-        i = max(0, max((k for k, (ms, _n) in enumerate(harta) if ms <= poz + 50), default=0))
-        if pas > 0:
-            j = i + 1
-            if j >= len(harta):
-                voce.spune(_('Ultima măsură.'), intrerupe=True)
-                return
-        else:
-            j = i if poz - harta[i][0] > 1200 else max(0, i - 1)
-        try:
-            self.redare.sari(harta[j][0])
-        except Exception as ex:
-            self.SetStatusText(str(ex))
-            return
-        text = _('Anacruza') if harta[j][1] == 0 else _('Măsura {0}', harta[j][1])
-        self.SetStatusText(text)
-        voce.spune(text, intrerupe=True)
-
-    def opreste_redarea(self, e=None):
-        self.redare.opreste()
-        self.SetStatusText(_('Oprit.'))
-        voce.spune(_('Oprit.'), intrerupe=True)
 
     def mergi_la(self, e=None):
         if not self.P:
@@ -738,9 +708,6 @@ class Fereastra(wx.Frame):
             return
         s = self.selectie() or (self.P.numere[0], self.P.numere[-1], self._portative_alese())
         prima, ultima, port = s
-        # ca la un player: de la o singură măsură aleasă se cântă până la final (în buclă rămâne doar măsura)
-        if prima == ultima and not self.m_bucla.IsChecked():
-            pana_la_final = True
         if pana_la_final:
             ultima = self.P.numere[-1]
         try:
@@ -967,7 +934,7 @@ class Fereastra(wx.Frame):
                 self.SetStatusText(str(ex))
 
     def _inchide_sint_daca_liber(self):
-        if wx.Window.FindFocus() is not self.t_clav and self.carte.GetSelection() != 4:
+        if wx.Window.FindFocus() is not self.t_clav and self.carte.GetCurrentPage() is not self.p_auz:
             self.sint.elibereaza()
 
     def _volum_din_setari(self):
@@ -1442,7 +1409,7 @@ class Fereastra(wx.Frame):
             wx.CallLater(3000, self._auz_urmatorul, self.auz_ses.ex)      # următorul exercițiu, după 3 secunde
 
     def _auz_urmatorul(self, ex_vechi):
-        if self.auz_ses.ex is ex_vechi and self.carte.GetSelection() == 4:
+        if self.auz_ses.ex is ex_vechi and self.carte.GetCurrentPage() is self.p_auz:
             self.auz_nou()
 
     # ---------------- claviatura ----------------
@@ -1751,6 +1718,9 @@ class Fereastra(wx.Frame):
         if foc is self.t_clav:
             self._clav_apasa(e)
             return
+        if self.carte.GetCurrentPage() is self.p_player and foc is not None and self._e_in(foc, self.p_player) \
+                and self.p_player.tasta(e):
+            return
         # arborii de instrumente: spațiu deschide sau închide o categorie, spațiu sau Enter alege un instrument
         # (prins aici, pentru că tasta nu ajunge sigur la arbore pe Windows)
         if foc is not None and foc in (self.s_instrument, self.a_instr) and not e.AltDown() and not e.ControlDown() \
@@ -1770,7 +1740,7 @@ class Fereastra(wx.Frame):
         if e.GetKeyCode() == wx.WXK_TAB:
             # din textul în cuvinte sau în Braille, Tab duce înapoi la lista de măsuri
             # (căsuța de text nu dă singură cursorul mai departe), Shift Tab la ultima opțiune din stânga
-            if foc in (self.t_cuvinte, self.t_braille) and not e.ControlDown() and not e.AltDown():
+            if foc in (self.t_cuvinte, self.t_braille, self.p_player.t) and not e.ControlDown() and not e.AltDown():
                 (self.c_voci if e.ShiftDown() else self.lista).SetFocus()
                 return
             e.Skip()
@@ -1782,7 +1752,7 @@ class Fereastra(wx.Frame):
             if e.GetKeyCode() == wx.WXK_F2:
                 self.scriere_spune_masura()
                 return
-        if self.carte.GetSelection() == 4 and (foc is None or self._e_in(foc, self.p_auz) or foc is self.carte):
+        if self.carte.GetCurrentPage() is self.p_auz and (foc is None or self._e_in(foc, self.p_auz) or foc is self.carte):
             sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
             if e.AltDown() and not e.ControlDown() and (e.GetKeyCode() == ord('E') or sc == 0x12):
                 self.a_rasp.SetFocus(); return           # Alt E: la lista de răspunsuri
@@ -1826,11 +1796,9 @@ class Fereastra(wx.Frame):
             if not shift and (k == ord('I') or r == 0x49):
                 self.reda(True); return
             if not shift and (k == ord('L') or r == 0x4C):
-                self.inainte_inapoi(1); return
+                self.muta(1); return
             if not shift and (k == ord('J') or r == 0x4A):
-                self.inainte_inapoi(-1); return
-            if k == wx.WXK_ESCAPE and self.redare.stare in ('canta', 'pauza'):
-                self.opreste_redarea(); return
+                self.muta(-1); return
         e.Skip()
 
     def comuta_bucla(self, e=None):
@@ -2341,6 +2309,113 @@ class DialogText(wx.Dialog):
         self.SetSizer(s)
         self.SetEscapeId(wx.ID_OK)
         t.SetFocus()
+
+
+class PaginaPlayer(wx.Panel):
+    """Fila Player: toată piesa de la prima măsură până la capăt, ca pe YouTube.
+    K pornește, pune pauză, continuă; J și L derulează câte 5 secunde; Home de la început; Escape oprește."""
+    PAS = 5000
+
+    def __init__(self, carte, fereastra):
+        super().__init__(carte)
+        self.f = fereastra
+        s = wx.BoxSizer(wx.VERTICAL)
+        s.Add(wx.StaticText(self, label=_('Player')), 0, wx.ALL, 2)
+        self.t = wx.TextCtrl(self, style=wx.TE_MULTILINE | wx.TE_READONLY, name=_('Player'),
+                             value=_('Player. K pornește și pune pauză, L înainte 5 secunde, J înapoi 5 secunde, Home de la început, Escape oprește.'))
+        s.Add(self.t, 1, wx.EXPAND | wx.ALL, 2)
+        self.SetSizer(s)
+
+    @property
+    def sel(self):
+        P = self.f.P
+        return (id(P), P.numere[0], P.numere[-1], tuple(range(len(P.portative))))
+
+    def _al_meu(self):
+        """Ce se cântă acum e piesa întreagă pornită din player (nu o măsură pornită cu K din altă filă)."""
+        return self.f.redare.stare != 'oprit' and self.f._redat and self.f._redat[0] == self.sel
+
+    def _porneste(self, ms, in_pauza=False):
+        try:
+            self.f._porneste(self.sel, ms, in_pauza)
+            self._lung = self._lungime()
+        except Exception as ex:
+            traceback.print_exc()
+            self.t.SetValue(_('Nu am putut reda. Eroare: {0}', ex))
+
+    def _lungime(self):
+        """Cât durează piesa, în milisecunde (ținută minte, ca să se știe și după ce s-a terminat)."""
+        try:
+            n = int(self.f.redare._mci(f'status {redare._ALIAS} length') or 0) if self.f.redare.stare != 'oprit' else 0
+        except Exception:
+            n = 0
+        return n or getattr(self, '_lung', 0)
+
+    @staticmethod
+    def _timp(ms):
+        sec = max(0, int(ms // 1000))
+        return f'{sec // 60}:{sec % 60:02d}'
+
+    def _unde(self, ms):
+        """„1:05 din 3:20, măsura 12”: spus de NVDA după fiecare derulare."""
+        text = _('{0} din {1}', self._timp(ms), self._timp(self._lungime()))
+        harta = getattr(self.f, '_harta', [])
+        nr = [n for t, n in harta if t <= ms + 50]
+        if nr:
+            text += ', ' + (_('Anacruza') if nr[-1] == 0 else _('Măsura {0}', nr[-1]).lower())
+        self.t.SetValue(text)
+        voce.spune(text, intrerupe=True)
+
+    def tasta(self, e):
+        """Tastele playerului; întoarce True dacă a folosit tasta."""
+        k = e.GetKeyCode()
+        sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+        if e.ControlDown() or e.AltDown() or e.ShiftDown():
+            return False
+        if not self.f.P:
+            if k in (ord('K'), ord('J'), ord('L'), wx.WXK_SPACE) or sc in (0x25, 0x24, 0x26):
+                voce.spune(_('Deschide întâi o partitură.'), intrerupe=True)
+                return True
+            return False
+        r = self.f.redare
+        if r.stare != 'oprit' and not self._al_meu():
+            r.opreste()                           # se cânta altceva (o măsură): playerul pornește piesa întreagă
+        if k == wx.WXK_ESCAPE:
+            if r.stare != 'oprit':
+                r.opreste()
+                voce.spune(_('Oprit.'), intrerupe=True)
+                return True
+            return False
+        if k == ord('K') or sc == 0x25 or k == wx.WXK_SPACE:
+            terminat_inainte = r.stare != 'oprit' and r.terminat()
+            if r.stare == 'oprit' or terminat_inainte:
+                pornit = r.stare == 'oprit' and not terminat_inainte
+                self._porneste(0)
+                voce.spune(_('Pornit.') if pornit else _('De la început.'), intrerupe=True)
+            else:
+                st = r.pauza_continua()
+                voce.spune(_('Pauză.') if st == 'pauza' else _('Continuă.'), intrerupe=True)
+            return True
+        if k in (ord('J'), ord('L')) or sc in (0x24, 0x26):
+            inainte = k == ord('L') or sc == 0x26
+            terminat = r.terminat()
+            poz = r.pozitie() if not terminat else (0 if inainte else getattr(self, '_lung', 0))
+            if r.stare == 'oprit':
+                self._porneste(0, in_pauza=True)       # piesa se pregătește în pauză; K o pornește
+            lung = self._lungime()
+            nou = poz + (self.PAS if inainte else -self.PAS)
+            nou = max(0, min(nou, max(0, lung - 200)))
+            r.sari(nou)
+            self._unde(nou)
+            return True
+        if k == wx.WXK_HOME:
+            if r.stare == 'oprit':
+                self._porneste(0)
+            else:
+                r.sari(0)
+            self._unde(0)
+            return True
+        return False
 
 
 class DialogProgres(wx.Dialog):
