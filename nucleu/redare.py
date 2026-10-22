@@ -104,6 +104,35 @@ def batai(scor):
     return rez
 
 
+def masuri(scor):
+    """(poziția în pătrimi, numărul măsurii) pentru fiecare măsură, cu repetițiile desfăcute ca la MIDI și la metronom."""
+    try:
+        s = scor.expandRepeats()
+    except Exception:
+        s = scor
+    prima = s.parts[0] if s.parts else s
+    return [(float(m.offset), m.number) for m in prima.getElementsByClass('Measure')]
+
+
+def milisecunde(date: bytes, patrimi):
+    """Pentru fiecare poziție în pătrimi, momentul ei în milisecunde în MIDI-ul dat (după harta lui de tempo)."""
+    _fmt, div, piste = _citeste(date)
+    tempo_ = sorted((t, int.from_bytes(ev[3:6], 'big')) for p in piste for t, ev in p
+                    if len(ev) >= 6 and ev[0] == 0xFF and ev[1] == 0x51)
+    rez = []
+    for q in patrimi:
+        tinta = q * div
+        ms, ultim, us = 0.0, 0, 500000
+        for t, u in tempo_:
+            if t >= tinta:
+                break
+            ms += (t - ultim) * us / div / 1000
+            ultim, us = t, u
+        ms += (tinta - ultim) * us / div / 1000
+        rez.append(int(ms))
+    return rez
+
+
 # ---------------- MIDI ca listă de evenimente ----------------
 def _citeste(date: bytes):
     """(format, diviziune, piste); fiecare pistă e o listă de (tick absolut, octeții evenimentului)."""
@@ -372,6 +401,13 @@ class Redare:
         if self.stare == 'canta' and mod not in ('playing', 'seeking'):
             return True
         return lung > 0 and poz >= lung - 30
+
+    def sari(self, ms: int):
+        """Mută redarea la momentul dat (în milisecunde), fără s-o oprească; în pauză rămâne în pauză."""
+        if self.stare == 'canta':
+            self._mci(f'play {_ALIAS} from {max(0, int(ms))}')
+        elif self.stare == 'pauza':
+            self._mci(f'seek {_ALIAS} to {max(0, int(ms))}')
 
     def pauza_continua(self) -> str:
         if self.stare == 'canta':
