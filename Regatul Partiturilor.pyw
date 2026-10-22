@@ -1606,9 +1606,10 @@ class Fereastra(wx.Frame):
             poz = ('inst', self.instrument)
         return poz
 
-    def _clav_spune_categoria(self, ci):
+    def _clav_spune_categoria(self, ci, cu_nume=True):
         cat = self._clav_categorii()[ci][0]
-        text = _('{0}, categorie extinsă', cat) if getattr(self, '_clav_deschisa', None) == ci else _('{0}, categorie restrânsă', cat)
+        stare = _('extins') if getattr(self, '_clav_deschisa', None) == ci else _('restrâns')
+        text = f'{cat}, {stare}' if cu_nume else stare
         self.SetStatusText(text)
         voce.spune(text, intrerupe=True)
 
@@ -1619,7 +1620,9 @@ class Fereastra(wx.Frame):
         poz = viz[(i + pas) % len(viz)]
         self._clav_cursor = poz
         if poz[0] == 'inst':
-            self.schimba_instrument(index=poz[1])
+            cat, start, n = self._clav_categorii()[self._clav_cat_a(poz[1])]
+            nume = self.instrumente[poz[1]][1]
+            self.schimba_instrument(index=poz[1], anunt=_('{0}, {1} din {2}', nume, poz[1] - start + 1, n))
         else:
             self._clav_spune_categoria(poz[1])
 
@@ -1632,9 +1635,9 @@ class Fereastra(wx.Frame):
             ci = val
             self._clav_deschisa = None if getattr(self, '_clav_deschisa', None) == ci else ci
         self._clav_cursor = ('cat', ci)
-        self._clav_spune_categoria(ci)
+        self._clav_spune_categoria(ci, cu_nume=False)      # la spațiu se spune doar „extins” sau „restrâns”
 
-    def schimba_instrument(self, pas=0, index=None, proba=False):
+    def schimba_instrument(self, pas=0, index=None, proba=False, anunt=None):
         n = len(self.instrumente)
         self.instrument = (self.instrument + pas) % n if index is None else index % n
         _cat, nume, prog = self.instrumente[self.instrument]
@@ -1647,7 +1650,7 @@ class Fereastra(wx.Frame):
         scrie_setari(self.setari)
         self._sincronizeaza_setari()
         self.SetStatusText(_('Instrument: {0}.', nume))
-        voce.spune(nume, intrerupe=True)
+        voce.spune(anunt or nume, intrerupe=True)
         self._clav_text()
 
     @staticmethod
