@@ -12,7 +12,7 @@ from .limba import _
 
 DEPOZIT = 'razvan-raftul/RegatulPartiturilor'
 BAZA = f'https://github.com/{DEPOZIT}/releases/download/latest/'
-SETUP = 'RegatulPartiturilor-Setup.exe'
+SETUP = 'MusicBox-Setup.exe'          # până la 0.1.62 se numea RegatulPartiturilor-Setup.exe
 
 
 def instalat() -> bool:
@@ -28,7 +28,7 @@ def _v(t):
 
 
 def _citeste(url, timeout=15) -> bytes:
-    req = urllib.request.Request(url, headers={'User-Agent': 'RegatulPartiturilor'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'MusicBox'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -69,7 +69,7 @@ def _curata_vechi(pastreaza):
     d = tempfile.gettempdir()
     try:
         for n in os.listdir(d):
-            if n.startswith('RegatulPartiturilor-Setup-') and os.path.join(d, n) != pastreaza:
+            if n.startswith(('MusicBox-Setup-', 'RegatulPartiturilor-Setup-')) and os.path.join(d, n) != pastreaza:
                 try:
                     os.remove(os.path.join(d, n))
                 except OSError:
@@ -80,10 +80,10 @@ def _curata_vechi(pastreaza):
 
 def descarca_setup(versiune, progres=None) -> str:
     """Descarcă programul de instalare. progres(descarcat, total) se cheamă pe parcurs (total poate fi 0 dacă nu se știe)."""
-    cale = os.path.join(tempfile.gettempdir(), f'RegatulPartiturilor-Setup-{versiune}.exe')
+    cale = os.path.join(tempfile.gettempdir(), f'MusicBox-Setup-{versiune}.exe')
     _curata_vechi(cale)
     parte = f'{cale}.{os.getpid()}.part'
-    req = urllib.request.Request(BAZA + SETUP, headers={'User-Agent': 'RegatulPartiturilor'})
+    req = urllib.request.Request(BAZA + SETUP, headers={'User-Agent': 'MusicBox'})
     descarcat = 0
     with urllib.request.urlopen(req, timeout=60) as r, open(parte, 'wb') as f:
         total = int(r.headers.get('Content-Length') or 0)
@@ -110,6 +110,6 @@ def descarca_setup(versiune, progres=None) -> str:
 
 
 def porneste_setup(cale):
-    # jurnalul instalării, ca să se vadă de ce n-ar merge: %TEMP%\RegatulPartiturilor-instalare.log
-    jurnal = os.path.join(tempfile.gettempdir(), 'RegatulPartiturilor-instalare.log')
+    # jurnalul instalării, ca să se vadă de ce n-ar merge: %TEMP%\MusicBox-instalare.log
+    jurnal = os.path.join(tempfile.gettempdir(), 'MusicBox-instalare.log')
     subprocess.Popen([cale, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/AUTOUPDATE', f'/LOG={jurnal}'], close_fds=True)
