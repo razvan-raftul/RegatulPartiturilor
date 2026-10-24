@@ -18,4 +18,4 @@ if not exist ".instalat" (
   )
   echo gata> ".instalat"
 )
-start "" pyw -3 "Regatul Partiturilor.pyw" %1
+start "" pyw -3 "Music Box.pyw" %1

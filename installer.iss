@@ -5,7 +5,7 @@
 #define AppName "Music Box"
 ; numele vechi: scurtăturile cu el se șterg la actualizare
 #define NumeVechi "Regatul Partiturilor"
-#define AppExe "RegatulPartiturilor.exe"
+#define AppExe "MusicBox.exe"
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
@@ -28,7 +28,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=.
-OutputBaseFilename=RegatulPartiturilor-Setup
+OutputBaseFilename=MusicBox-Setup
 SetupIconFile=icon.ico
 Compression=lzma2
 SolidCompression=yes
@@ -53,7 +53,7 @@ ro.Scurtaturi=Scurtături:
 Name: "desktopicon"; Description: "{cm:ScurtaturaDesktop}"; GroupDescription: "{cm:Scurtaturi}"
 
 [Files]
-Source: "dist\RegatulPartiturilor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\MusicBox\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "Exemple\*"; DestDir: "{userdocs}\{#AppName}\Exemple"; Flags: onlyifdoesntexist
 Source: "componente.txt"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef AreVoce
@@ -65,6 +65,8 @@ Source: "nvdaControllerClient32.dll"; Flags: dontcopy
 Type: filesandordirs; Name: "{app}\_internal"
 Type: files; Name: "{autoprograms}\{#NumeVechi}.lnk"
 Type: files; Name: "{autodesktop}\{#NumeVechi}.lnk"
+; programul se numea RegatulPartiturilor.exe; acum e MusicBox.exe
+Type: files; Name: "{app}\RegatulPartiturilor.exe"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\componente"
