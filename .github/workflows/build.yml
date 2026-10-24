@@ -30,15 +30,15 @@ jobs:
         run: python -c "from nucleu import partitura, cuvinte, braille, VERSIUNE; P=partitura.incarca('Exemple/Mozart - Sonata K545, expozitia.mxl'); print(VERSIUNE); print(P.descrie(1,2,[0,1],cuvinte.Optiuni())[:300].encode('ascii','replace').decode()); print(len(braille.din_scor(P.extrage(1,4,[0,1]))))"
       - name: Executabil
         run: >
-          pyinstaller --noconfirm --windowed --name RegatulPartiturilor --icon icon.ico
+          pyinstaller --noconfirm --windowed --name MusicBox --icon icon.ico
           --add-data "icon.ico;."
           --collect-submodules music21 --collect-data music21 --collect-all pypdfium2 --collect-all pypdfium2_raw
           --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
-          "Regatul Partiturilor.pyw"
+          "Music Box.pyw"
       - name: Fără colecția de partituri din music21 (nu e folosită, ar mări mult programul)
         shell: pwsh
         run: |
-          $c = "dist\RegatulPartiturilor\_internal\music21\corpus"
+          $c = "dist\MusicBox\_internal\music21\corpus"
           if (Test-Path $c) { Get-ChildItem $c -Directory | Remove-Item -Recurse -Force }
           "{0:N0} MB" -f ((Get-ChildItem dist -Recurse | Measure-Object Length -Sum).Sum / 1MB)
       - name: Sunete (FluidSynth și banca de sunete GeneralUser GS)
@@ -52,7 +52,7 @@ jobs:
             Get-ChildItem fs -Recurse -Include 'libfluidsynth-3.dll','sndfile.dll' | ForEach-Object { Copy-Item $_.FullName sunete\ }
             Invoke-WebRequest "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/GeneralUser-GS.sf2" -OutFile sunete\GeneralUser-GS.sf2
             Invoke-WebRequest "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/documentation/LICENSE.txt" -OutFile sunete\GeneralUser-GS-licenta.txt
-            Copy-Item sunete dist\RegatulPartiturilor\ -Recurse -Force
+            Copy-Item sunete dist\MusicBox\ -Recurse -Force
             Get-ChildItem sunete | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
           } catch { Write-Host "Fara sunete: $_" }
           exit 0
@@ -67,7 +67,7 @@ jobs:
             $toate | ForEach-Object { Write-Host $_.FullName }
             $x64 = $toate | Where-Object { $_.FullName -match '\\x64\\' -or $_.Name -match '64\.dll$' } | Select-Object -First 1
             $x86 = $toate | Where-Object { $_.FullName -match '\\x86\\' -or $_.Name -match '32\.dll$' } | Select-Object -First 1
-            if ($x64) { Copy-Item $x64.FullName dist\RegatulPartiturilor\nvdaControllerClient.dll; Copy-Item $x64.FullName nvdaControllerClient.dll; Write-Host "x64: $($x64.FullName)" }
+            if ($x64) { Copy-Item $x64.FullName dist\MusicBox\nvdaControllerClient.dll; Copy-Item $x64.FullName nvdaControllerClient.dll; Write-Host "x64: $($x64.FullName)" }
             if ($x86) { Copy-Item $x86.FullName nvdaControllerClient32.dll; Write-Host "x86: $($x86.FullName)" }
           } catch { Write-Host "Fara NVDA Controller Client: $_" }
           exit 0
@@ -77,7 +77,7 @@ jobs:
           --add-data "icon.ico;."
           --collect-submodules music21 --collect-data music21 --collect-all pypdfium2 --collect-all pypdfium2_raw
           --exclude-module matplotlib --exclude-module tkinter --exclude-module scipy --exclude-module IPython --exclude-module pytest
-          "Regatul Partiturilor.pyw"
+          "Music Box.pyw"
       - name: Proba executabilului
         shell: pwsh
         env:
@@ -96,7 +96,7 @@ jobs:
           gh release create diagnostic diagnostic.txt --prerelease --title "Diagnostic $env:APPVER" --notes "Rezultatul probei automate"
           if ($t -notmatch 'AUTOTEST OK') { Write-Host "Proba programului a esuat"; exit 1 }
           # aceeasi proba si pe programul adevarat, fara consola
-          $q = Start-Process "dist\RegatulPartiturilor\RegatulPartiturilor.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest2.txt' -PassThru
+          $q = Start-Process "dist\MusicBox\MusicBox.exe" -ArgumentList '--autotest', '"Exemple\Mozart - Sonata K545, expozitia.mxl"', 'autotest2.txt' -PassThru
           if (-not $q.WaitForExit(240000)) { Stop-Process -Id $q.Id -Force; Write-Host "Programul fara consola nu s-a terminat"; exit 1 }
           if (-not (Test-Path autotest2.txt) -or ((Get-Content autotest2.txt -Raw -Encoding utf8) -notmatch 'AUTOTEST OK')) { Write-Host "Proba programului fara consola a esuat"; exit 1 }
           Write-Host "Ambele probe au trecut"
@@ -117,4 +117,6 @@ jobs:
           $ErrorActionPreference = 'Continue'
           Set-Content -Path version.txt -Value $env:APPVER -NoNewline -Encoding ascii
           gh release delete latest --yes --cleanup-tag 2>$null
-          gh release create latest RegatulPartiturilor-Setup.exe version.txt --title "Regatul Partiturilor $env:APPVER" --notes "Versiunea $env:APPVER. RegatulPartiturilor-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
+          # tranziție: versiunile instalate până la 0.1.62 caută RegatulPartiturilor-Setup.exe; îl scoatem după ce toate calculatoarele lui Răzvan au versiunea cu MusicBox-Setup.exe
+          Copy-Item MusicBox-Setup.exe RegatulPartiturilor-Setup.exe
+          gh release create latest MusicBox-Setup.exe RegatulPartiturilor-Setup.exe version.txt --title "Music Box $env:APPVER" --notes "Versiunea $env:APPVER. MusicBox-Setup.exe instaleaza programul si pune scurtatura pe desktop; programul se actualizeaza singur la pornire."
