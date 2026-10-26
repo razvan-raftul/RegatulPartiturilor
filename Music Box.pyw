@@ -23,7 +23,7 @@ import wx.lib.scrolledpanel as scrolled  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import limba  # noqa: E402
 from nucleu.limba import _  # noqa: E402
-from nucleu import VERSIUNE, actualizare, auz, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, auz_absolut, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
 
 NUME = 'Music Box'
 INDEMN = _('Nicio partitură deschisă. Deschide o partitură cu Control O.')
@@ -1202,14 +1202,14 @@ class Fereastra(wx.Frame):
         eticheta(_('Numele notelor'))
         self.a_nume = wx.Choice(pa, choices=[_('Do Re Mi'), 'C D E'], name=_('Numele notelor'))
         sa.Add(self.a_nume, 0, wx.ALL, 3)
-        eticheta(_('Sunetul exercițiilor (spațiu deschide o categorie, Enter alege)'))
+        self.a_e_instr = eticheta(_('Sunetul exercițiilor (spațiu deschide o categorie, Enter alege)'))
         self.a_instr, self._noduri_auz = self._arbore_instrumente(pa, _('Sunetul exercițiilor'))
         sa.Add(self.a_instr, 0, wx.EXPAND | wx.ALL, 3)
-        eticheta(_('Octavele'))
+        self.a_e_oct = eticheta(_('Octavele'))
         self.a_oct = ListaBife(pa, choices=[_('Octava {0}', o) for o in range(1, 8)], name=_('Octavele'), size=(-1, 90),
                                la_schimbare=self._auz_schimbat)
         sa.Add(self.a_oct, 0, wx.EXPAND | wx.ALL, 3)
-        eticheta(_('Cât de des apar cele bifate mai jos'))
+        self.a_e_izol = eticheta(_('Cât de des apar cele bifate mai jos'))
         self.a_izol = wx.Choice(pa, choices=auz.IZOLARE, name=_('Cât de des apar cele bifate'))
         sa.Add(self.a_izol, 0, wx.ALL, 3)
         self.a_e_note = eticheta(_('Notele exersate'))
@@ -1242,7 +1242,7 @@ class Fereastra(wx.Frame):
         self.a_e_tempo = eticheta(_('Tempoul duratelor (pătrimi pe minut)'))
         self.a_tempo = wx.SpinCtrl(pa, min=40, max=200, initial=80, name=_('Tempoul duratelor'))
         sa.Add(self.a_tempo, 0, wx.ALL, 3)
-        eticheta(_('Câte greșeli până îți arăt răspunsul'))
+        self.a_e_gres = eticheta(_('Câte greșeli până îți arăt răspunsul'))
         self.a_gres = wx.SpinCtrl(pa, min=1, max=5, initial=2, name=_('Câte greșeli până îți arăt răspunsul'))
         sa.Add(self.a_gres, 0, wx.ALL, 3)
         eticheta(_('Întrebarea'))
@@ -1255,12 +1255,38 @@ class Fereastra(wx.Frame):
         self.a_text = wx.TextCtrl(pa, style=wx.TE_PROCESS_ENTER, name=_('Duratele auzite'))
         sa.Add(self.a_text, 0, wx.EXPAND | wx.ALL, 3)
         rand = wx.WrapSizer()
+        self.a_but = []
         for text, fn in ((_('Exercițiu nou (punct)'), lambda e: self.auz_nou()), (_('Ascultă din nou (virgulă)'), lambda e: self.auz_asculta()),
                          (_('Scorul'), lambda e: self._auz_spune(self.auz_ses.scor.text())),
                          (_('Scorul de la zero'), lambda e: self._auz_scor_zero())):
             b = wx.Button(pa, label=text)
             b.Bind(wx.EVT_BUTTON, fn)
             rand.Add(b, 0, wx.ALL, 3)
+            self.a_but.append(b)
+        sa.Add(rand, 0, wx.EXPAND)
+        # auz absolut, ca în studiul din 2025 (nucleu\auz_absolut.py)
+        self.ap = auz_absolut.Antrenament(self.setari.get('auz_absolut'), self.auz_set.litere)
+        self._ap_r = None              # runda care merge acum
+        self._ap_gen = 0
+        self.a_e_ap = eticheta(_('Unde ești la auz absolut'))
+        self.a_ap = wx.TextCtrl(pa, style=wx.TE_READONLY | wx.TE_MULTILINE, size=(-1, 150), name=_('Unde ești la auz absolut'))
+        sa.Add(self.a_ap, 0, wx.EXPAND | wx.ALL, 3)
+        self.a_ap_lim = wx.CheckBox(pa, label=_('Limită de timp pentru răspuns, ca în studiu'))
+        self.a_ap_lim.SetValue(self.setari.get('auz_absolut_limita', True))
+        self.a_ap_lim.Bind(wx.EVT_CHECKBOX, lambda e: (self.setari.__setitem__('auz_absolut_limita', self.a_ap_lim.GetValue()),
+                                                       scrie_setari(self.setari)))
+        sa.Add(self.a_ap_lim, 0, wx.ALL, 3)
+        rand = wx.WrapSizer()
+        self.a_ap_but = []
+        for text, fn in ((_('Începe nivelul (punct)'), lambda e: self.ap_incepe()),
+                         (_('Ascultă notele învățate'), lambda e: self.ap_asculta_invatate()),
+                         (_('Testul din studiu (144 de note)'), lambda e: self.ap_incepe(test=True)),
+                         (_('Cum merge antrenamentul'), lambda e: self.mesaj(auz_absolut.explicatie(), _('Auz absolut'))),
+                         (_('Antrenamentul de la zero'), lambda e: self.ap_de_la_zero())):
+            b = wx.Button(pa, label=text)
+            b.Bind(wx.EVT_BUTTON, fn)
+            rand.Add(b, 0, wx.ALL, 3)
+            self.a_ap_but.append(b)
         sa.Add(rand, 0, wx.EXPAND)
         pa.SetSizer(sa)
         pa.SetupScrolling(scroll_x=False)
@@ -1313,6 +1339,18 @@ class Fereastra(wx.Frame):
             ctrl.Show(ex == cand)
         for ctrl in (self.a_e_rasp, self.a_rasp):           # la durate răspunsul se scrie, nu se alege
             ctrl.Show(ex != 3)
+        ap = ex == 4
+        for ctrl in [self.a_e_ap, self.a_ap, self.a_ap_lim] + self.a_ap_but:
+            ctrl.Show(ap)
+        for ctrl in [self.a_e_instr, self.a_instr, self.a_e_oct, self.a_oct, self.a_e_izol, self.a_izol,
+                     self.a_e_gres, self.a_gres] + self.a_but:
+            ctrl.Show(not ap)
+        if ap:
+            self.ap.litere = self.a_nume.GetSelection() == 1
+            self.a_ap.SetValue(self.ap.descriere())
+            if self._ap_r is None:
+                self.a_intreb.SetValue(_('Apasă punct ca să începi nivelul. Răspunzi cu tastele claviaturii, rândul de jos: Z do, S do diez, X re, D re diez, C mi, V fa, G fa diez, B sol, H sol diez, N la, J la diez, M si; spațiu: în afara grupului. Când nu merge un nivel, aceleași taste îți cântă nota, dacă e învățată. Virgulă: unde ești. Escape oprește.'))
+                self.a_rasp.Set([t for t, _v in self.ap.urmatoarea().optiuni])
         nume = auz.nume_note(self.a_nume.GetSelection() == 1)
         for i, n in enumerate(nume):
             self.a_note.SetString(i, n)
@@ -1340,6 +1378,7 @@ class Fereastra(wx.Frame):
         scrie_setari(self.setari)
         self._auz_arata_ce_trebuie()
         if s.exercitiu != vechi_ex:
+            self.ap_opreste(tacut=True)
             self.auz_ses.ex = None
             self.a_rasp.Clear()
             self.a_intreb.SetValue(_('Apasă punct pentru un exercițiu nou.'))
@@ -1446,6 +1485,269 @@ class Fereastra(wx.Frame):
     def _auz_urmatorul(self, ex_vechi):
         if self.auz_ses.ex is ex_vechi and self.carte.GetCurrentPage() is self.p_auz:
             self.auz_nou()
+
+
+    # ---------------- auz absolut (ca în studiul din 2025) ----------------
+    TASTE_NOTE = {0x2C: 0, 0x1F: 1, 0x2D: 2, 0x20: 3, 0x2E: 4, 0x2F: 5, 0x22: 6, 0x30: 7, 0x23: 8, 0x31: 9, 0x24: 10, 0x32: 11}
+    LITERE_NOTE = {'Z': 0, 'S': 1, 'X': 2, 'D': 3, 'C': 4, 'V': 5, 'G': 6, 'B': 7, 'H': 8, 'N': 9, 'J': 10, 'M': 11}
+
+    def _ap_salveaza(self):
+        self.setari['auz_absolut'] = self.ap.stare()
+        scrie_setari(self.setari)
+        self.a_ap.SetValue(self.ap.descriere())
+
+    def _ap_canta(self, note_, instrument, pauza=0.0, la_pornire=None):
+        """Cântă notele una după alta (800 ms fiecare) cu instrumentul dat; la_pornire() se cheamă când începe prima."""
+        self.redare.opreste()
+        try:
+            self.sint.program = self.instrumente[self.instrument][2]
+            self.sint.deschide()
+        except Exception as exc:
+            self._auz_spune(str(exc))
+            return False
+        self._auz_gen += 1
+        gen = self._auz_gen
+
+        def canta():
+            self.sint.program_temporar(tuple(instrument))
+            try:
+                for i, n in enumerate(note_):
+                    if gen != self._auz_gen:
+                        break
+                    self.sint.apasa(n, 100)
+                    if i == 0 and la_pornire:
+                        la_pornire()
+                    time.sleep(auz_absolut.DURATA_NOTA / 1000)
+                    self.sint.ridica(n)
+                    if pauza:
+                        time.sleep(pauza)
+            finally:
+                if gen == self._auz_gen:
+                    self.sint.program_inapoi()
+        threading.Thread(target=canta, daemon=True).start()
+        return True
+
+    def ap_incepe(self, test=False):
+        if self._ap_r is not None:
+            self._auz_spune(_('Merge deja. Escape oprește.'))
+            return
+        self._auz_schimbat()
+        self.ap.litere = self.auz_set.litere
+        r = self.ap.runda_test() if test else self.ap.urmatoarea()
+        self._ap_r, self._ap_i = r, 0
+        self._ap_gen += 1
+        gen = self._ap_gen
+        r.inceput = time.monotonic()
+        self.a_rasp.Set([t for t, _v in r.optiuni])
+        self.a_rasp.SetSelection(0)
+        if r.tip == 'test':
+            intro = _('Testul: 144 de note, întâi la pian, apoi la chitară, fără răspuns spus, 5 secunde fiecare. Răspunzi doar cu numele notei.')
+        elif r.tip == 'slab1':
+            intro = _('Exercițiu pentru nota {0}: 12 note. E nota {0} sau altă notă? Tasta notei pentru da, spațiu pentru altă notă. Cu răspuns spus.', self.ap.nume(r.nota_slaba))
+        elif r.tip == 'slab2':
+            intro = _('Al doilea exercițiu pentru nota {0}: 22 de note, fără răspuns spus.', self.ap.nume(r.nota_slaba))
+        else:
+            n, l = auz_absolut.nota_si_nivel(r.nivel)
+            intro = _('Nivelul {0}. {1} de note, trebuie {2} la sută.', r.nivel, len(r.incercari), auz_absolut.prag(l)) + ' ' + \
+                (_('Cu răspunsul spus.') if r.cu_raspuns else _('Fără răspuns spus.'))
+        self.a_intreb.SetValue(intro)
+        if r.shepard:
+            self._auz_spune(intro + ' ' + _('Întâi 20 de secunde de sunet care coboară, ca să uiți notele ascultate.'))
+            try:
+                import winsound
+                cale = os.path.join(tempfile.gettempdir(), 'MusicBox-shepard.wav')
+                if not os.path.isfile(cale):
+                    auz_absolut.shepard_wav(cale)
+                wx.CallLater(2500, lambda: gen == self._ap_gen and winsound.PlaySound(cale, winsound.SND_FILENAME | winsound.SND_ASYNC))
+                wx.CallLater(23500, self._ap_urmatoarea, gen)
+                return
+            except Exception:
+                pass
+        else:
+            self._auz_spune(intro)
+        wx.CallLater(4500 if r.tip != 'nivel' else 3000, self._ap_urmatoarea, gen)
+
+    def _ap_urmatoarea(self, gen):
+        r = self._ap_r
+        if gen != self._ap_gen or r is None:
+            return
+        if self.carte.GetCurrentPage() is not self.p_auz:
+            self.ap_opreste()
+            return
+        if self._ap_i >= len(r.incercari):
+            minute = (time.monotonic() - r.inceput) / 60
+            self._ap_r = None
+            nivel_vechi, gata_vechi = self.ap.nivel, self.ap.trecut_288
+            mesaj = self.ap.incheie(r, minute)
+            if r.tip == 'test' or self.ap.trecut_288 > gata_vechi:
+                self._ap_sunet('gata')
+            elif r.tip != 'nivel':
+                self._ap_sunet('trecut')
+            elif self.ap.nivel > nivel_vechi:
+                nou = auz_absolut.nota_si_nivel(self.ap.nivel)[0] > auz_absolut.nota_si_nivel(nivel_vechi)[0]
+                self._ap_sunet('nota_noua' if nou else 'trecut')
+            else:
+                self._ap_sunet('picat')
+            self._ap_salveaza()
+            self.a_intreb.SetValue(mesaj)
+            self._auz_spune(mesaj)
+            self.a_rasp.Set([t for t, _v in self.ap.urmatoarea().optiuni])
+            return
+        inc = r.incercari[self._ap_i]
+        self._ap_asteapta = False
+        self._ap_t0 = time.monotonic()
+
+        def pornit():
+            self._ap_t0 = time.monotonic()
+            self._ap_asteapta = True
+        self._ap_canta([inc.midi], r.instrument(self._ap_i), la_pornire=pornit)
+        if self.a_ap_lim.GetValue() or r.tip == 'test':
+            i = self._ap_i
+            wx.CallLater(r.fereastra + 150, lambda: gen == self._ap_gen and self._ap_i == i and self._ap_r is r
+                         and self._ap_raspuns(None))
+
+    # sunetele de la sfârșitul unui nivel: doar percuție (fără o înălțime clară, ca să nu-ți dea o notă de reper)
+    SUNETE_AP = {
+        'trecut': [(81, 0), (81, 140), (84, 300)],                    # triunghi, triunghi, clopoței
+        'nota_noua': [(81, 0), (81, 120), (81, 240), (84, 380), (49, 380)],   # plus țimbal
+        'gata': [(84, 0), (49, 0), (84, 700), (57, 700)],
+        'picat': [(77, 0), (77, 260)],                                 # wood block, încet
+    }
+
+    def _ap_sunet(self, tip):
+        if getattr(self.sint, 'exclusiv', False):
+            return                       # sintetizatorul Windows nu are tobe pe canalul nostru; tăcem
+        pasi = self.SUNETE_AP.get(tip, [])
+        self._auz_gen += 1
+        gen = self._auz_gen
+
+        def canta():
+            try:
+                self.sint.program_temporar((128, 0))
+                t0 = time.monotonic()
+                for nota, ms in pasi:
+                    asteapta = ms / 1000 - (time.monotonic() - t0)
+                    if asteapta > 0:
+                        time.sleep(asteapta)
+                    if gen != self._auz_gen:
+                        return
+                    self.sint.apasa(nota, 70 if tip == 'picat' else 95)
+                time.sleep(1.2)
+                for nota, _ms in pasi:
+                    self.sint.ridica(nota)
+            except Exception:
+                pass
+            finally:
+                if gen == self._auz_gen:
+                    self.sint.program_inapoi()
+        threading.Thread(target=canta, daemon=True).start()
+
+    def _ap_raspuns(self, valoare):
+        """valoare: nota (0–11), AFARA, sau None (a trecut timpul)."""
+        r = self._ap_r
+        if r is None or not getattr(self, '_ap_asteapta', False):
+            return
+        self._ap_asteapta = False
+        timp = (time.monotonic() - self._ap_t0) * 1000
+        if not self.a_ap_lim.GetValue() and r.tip != 'test' and valoare is not None:
+            timp = min(timp, r.fereastra)          # fără limită de timp: răspunsul lent nu e greșeală
+        inc = r.incercari[self._ap_i]
+        bine = r.raspunde(self._ap_i, valoare, timp)
+        self._ap_i += 1
+        pauza = 700
+        if r.cu_raspuns:
+            if bine:
+                spus = _('Da.')
+            else:
+                era = self.ap.nume_raspuns(inc.tinta) if r.tip == 'nivel' else \
+                    (self.ap.nume(inc.tinta) if inc.tinta != auz_absolut.AFARA else _('altă notă'))
+                spus = (_('Prea târziu.') if valoare is None or timp > r.fereastra else _('Nu.')) + ' ' + _('Era {0}.', era)
+            self._auz_spune(spus)
+            pauza = 900 if bine else 1800
+        wx.CallLater(pauza, self._ap_urmatoarea, self._ap_gen)
+
+    def ap_opreste(self, tacut=False):
+        if self._ap_r is None:
+            return
+        self._ap_r = None
+        self._ap_gen += 1
+        self._auz_gen += 1
+        try:
+            import winsound
+            winsound.PlaySound(None, 0)
+        except Exception:
+            pass
+        if not tacut:
+            self._auz_spune(_('Oprit. Runda nu s-a numărat.'))
+        self.a_intreb.SetValue(_('Oprit. Apasă punct ca să începi din nou.'))
+
+    def ap_asculta_nota(self, pc):
+        if pc not in self.ap.invatate():
+            self._auz_spune(_('{0} nu e încă învățată.', self.ap.nume(pc)))
+            return
+        self._ap_canta(self.ap.mostre(pc), auz_absolut.PIAN, pauza=0.25)
+        self.setari['auz_absolut'] = self.ap.stare()
+        scrie_setari(self.setari)
+
+    def ap_asculta_invatate(self):
+        if self._ap_r is not None:
+            return
+        note_ = []
+        for pc in sorted(self.ap.invatate()):
+            note_ += self.ap.mostre(pc)
+        self._auz_spune(_('Notele învățate, de jos în sus, fiecare în trei octave: {0}.', ', '.join(self.ap.nume(pc) for pc in sorted(self.ap.invatate()))))
+        wx.CallLater(2500, lambda: self._ap_canta(note_, auz_absolut.PIAN, pauza=0.25))
+        self.setari['auz_absolut'] = self.ap.stare()
+        scrie_setari(self.setari)
+
+    def ap_de_la_zero(self):
+        if wx.MessageBox(_('Ștergi tot progresul la auz absolut și o iei de la nivelul 1? Testele făcute rămân.'), _('Auz absolut'),
+                         wx.YES_NO | wx.NO_DEFAULT, self) != wx.YES:
+            return
+        self.ap_opreste(tacut=True)
+        teste = self.ap.teste
+        self.ap = auz_absolut.Antrenament({'teste': teste}, self.auz_set.litere)
+        self._ap_salveaza()
+        self._auz_arata_ce_trebuie()
+        self._auz_spune(_('Ai pornit de la nivelul 1.'))
+
+    def _ap_tasta(self, e, foc, sc):
+        """Tastele în exercițiul de auz absolut. Întoarce True dacă tasta a fost folosită."""
+        if e.ControlDown() or e.AltDown():
+            return False
+        k = e.GetKeyCode()
+        scrie = isinstance(foc, wx.TextCtrl) and foc.IsEditable() or isinstance(foc, wx.SpinCtrl)
+        if scrie:
+            return False
+        if k == wx.WXK_ESCAPE and self._ap_r is not None:
+            self.ap_opreste()
+            return True
+        if k == ord('.') or sc == 0x34:
+            self.ap_incepe()
+            return True
+        if k == ord(',') or sc == 0x33:
+            self._auz_spune(self.ap.descriere())
+            return True
+        nota = self.TASTE_NOTE.get(sc) if os.name == 'nt' and sc else None
+        if nota is None and 0 < k < 256:
+            nota = self.LITERE_NOTE.get(chr(k).upper())
+        if self._ap_r is not None:
+            if k == wx.WXK_SPACE:
+                self._ap_raspuns(auz_absolut.AFARA)
+                return True
+            if nota is not None:
+                self._ap_raspuns(nota)           # o notă neînvățată e răspuns greșit
+                return True
+            if foc is self.a_rasp and k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                i = self.a_rasp.GetSelection()
+                if 0 <= i < len(self._ap_r.optiuni):
+                    self._ap_raspuns(self._ap_r.optiuni[i][1])
+                return True
+            return False
+        if nota is not None and isinstance(foc, (wx.ListBox, wx.Button, wx.CheckBox, wx.TextCtrl)):
+            self.ap_asculta_nota(nota)
+            return True
+        return False
 
     # ---------------- claviatura ----------------
     def _clav_text(self):
@@ -1852,6 +2154,18 @@ class Fereastra(wx.Frame):
                 return zi(_('spune pe ce măsură ești.'))
             return zi(_('scrii notele în câmp.'))
         # exerciții de auz
+        if pag is self.p_auz and self.auz_set.exercitiu == 4 and not (ctrl or alt):
+            if k == ord('.') or sc == 0x34:
+                return zi(_('începe nivelul.'))
+            if k == ord(',') or sc == 0x33:
+                return zi(_('spune unde ești.'))
+            if k == wx.WXK_SPACE:
+                return zi(_('răspunde: în afara grupului.'))
+            if k == wx.WXK_ESCAPE:
+                return zi(_('oprește runda.'))
+            n = self.TASTE_NOTE.get(sc) if sc else None
+            if n is not None:
+                return zi(_('răspunde {0}; când nu merge nicio rundă, îți cântă nota.', self.ap.nume(n)))
         if pag is self.p_auz:
             if alt and (k == ord('E') or sc == 0x12):
                 return zi(_('mergi la răspunsuri.'))
@@ -1958,6 +2272,8 @@ class Fereastra(wx.Frame):
                 return
         if self.carte.GetCurrentPage() is self.p_auz and (foc is None or self._e_in(foc, self.p_auz) or foc is self.carte):
             sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+            if self.auz_set.exercitiu == 4 and self._ap_tasta(e, foc, sc):
+                return
             if e.AltDown() and not e.ControlDown() and (e.GetKeyCode() == ord('E') or sc == 0x12):
                 # Alt E: la răspunsuri (la durate, la câmpul în care le scrii)
                 (self.a_text if self.auz_set.exercitiu == 3 else self.a_rasp).SetFocus(); return
@@ -2506,6 +2822,11 @@ def autotest(fisier, iesire):
         ses.nou()
         rez.append(f'AUZ {len(ses.ex.intrebari)} intrebari, raspuns: {ses.raspunde(ses.intrebare.corect)[0]}')
         _sd = auz.Sesiune(auz.Setari(exercitiu=3)); _ed = _sd.nou()
+        _ap = auz_absolut.Antrenament()
+        _r = _ap.urmatoarea()
+        for _i, _inc in enumerate(_r.incercari):
+            _r.raspunde(_i, _inc.tinta, 500)
+        rez.append(f'AUZ ABSOLUT {_ap.incheie(_r, 1)} test {len(_ap.runda_test().incercari)} note')
         rez.append(f'AUZ DURATE {len(_ed.durate)} sunete, {len(_ed.pasi)} pasi, citit {auz.citeste_durate("2, 1/2")}, raspuns: {_sd.raspunde_text(", ".join(str(b) for b in _ed.durate))[0]}')
         rez.append('SCRIERE LITERE ' + str(len(scriere.construieste('c4p d e f\nbb4d c#5d', '')[0].parts[0].recurse().notes)))
         try:
