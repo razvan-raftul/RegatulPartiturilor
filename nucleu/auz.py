@@ -16,7 +16,7 @@ ACORDURI = [(_('Major'), [0, 4, 7]), (_('Minor'), [0, 3, 7]), (_('Micșorat'), [
             (_('Minor major 7'), [0, 3, 7, 11]), (_('Semidiminuat 7'), [0, 3, 6, 10]), (_('Diminuat 7'), [0, 3, 6, 9])]
 RASTURNARI = [_('Poziție fundamentală'), _('Răsturnarea I'), _('Răsturnarea II'), _('Răsturnarea III')]
 
-EXERCITII = [_('Note'), _('Intervale'), _('Acorduri'), _('Durate (ritm)')]
+EXERCITII = [_('Note'), _('Intervale'), _('Acorduri'), _('Durate (ritm)'), _('Auz absolut (ca în studiul din 2025)')]
 
 # duratele: (nume, câte bătăi de pătrime ține, cum se scrie cu cifre)
 DURATE = [(_('întreagă'), 4.0, '4'), (_('doime cu punct'), 3.0, '3'), (_('doime'), 2.0, '2'),

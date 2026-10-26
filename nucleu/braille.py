@@ -13,7 +13,7 @@ import copy
 import re
 import unicodedata
 
-from music21 import bar, metadata, stream
+from music21 import bar, metadata, spanner, stream
 from music21.braille import basic, segment, text, translate
 from .limba import _
 
@@ -60,6 +60,76 @@ segment.BrailleSegment.addGroupingAttributes = _atribute_dupa_mana
 # o mână (de exemplu mâna stângă cu aceeași măsură de 4 ori), măsurile celeilalte mâini din dreptul lor
 # se pierdeau din Braille (Cramer, Studiul 46: lipseau măsurile 2-4). Răzvan citește totul scris întreg.
 segment.areGroupingsIdentical = lambda a, b: False
+
+
+# ---------- Semnul de triolet apare mereu ----------
+# music21 scrie semnul de triolet (punctele 2 3) doar când grupul ar putea fi „legat” după regulile braille
+# pentru note scurte; dacă după triolet urmează o optime, semnul se pierdea (Buciu, Canto 5, măsura 5).
+_original_beamed = segment.prepareBeamedNotes
+
+
+def _cu_semn_de_triolet(masura):
+    _original_beamed(masura)
+    for n in masura.notes:
+        tuplete = n.duration.tuplets
+        if tuplete and tuplete[0].type == 'start':
+            n.beamStart = True
+
+
+segment.prepareBeamedNotes = _cu_semn_de_triolet
+
+
+# ---------- Semnele de repetiție și voltele ----------
+# music21 scria bara de sfârșit de repetiție ca bară finală (⠣⠅) și nu scria deloc voltele.
+# Acum: începutul repetiției ⠣⠆, sfârșitul ⠣⠶, iar prima notă a voltei primește ⠼⠂ (volta 1),
+# ⠼⠆ (volta 2) etc., urmat de semnul de octavă.
+_original_bara = basic.barlineToBraille
+_CIFRE_JOS = {1: '\u2802', 2: '\u2806', 3: '\u2812', 4: '\u2832', 5: '\u2822'}
+
+
+def _bara(b):
+    if isinstance(b, bar.Repeat):
+        return '\u2823\u2836' if b.direction == 'end' else '\u2823\u2806'
+    return _original_bara(b)
+
+
+basic.barlineToBraille = _bara
+_original_nota = basic.noteToBraille
+_original_pauza = basic.restToBraille
+
+
+def _volta(obiect):
+    nr = getattr(obiect.editorial, 'volta', None) if 'volta' in obiect.editorial else None
+    return ('\u283c' + _CIFRE_JOS.get(nr, '\u2802')) if nr else ''
+
+
+def _nota(n, **kw):
+    v = _volta(n)
+    if v:
+        kw['showOctave'] = True
+    return v + _original_nota(n, **kw)
+
+
+def _pauza(r):
+    return _volta(r) + _original_pauza(r)
+
+
+basic.noteToBraille = _nota
+basic.restToBraille = _pauza
+
+
+def _marcheaza_voltele(scor):
+    for paranteza in scor.recurse().getElementsByClass(spanner.RepeatBracket):
+        masuri = paranteza.getSpannedElements()
+        if not masuri:
+            continue
+        note_ = list(masuri[0].recurse().notesAndRests)
+        if note_:
+            try:
+                nr = int(str(paranteza.number).split(',')[0].strip())
+            except ValueError:
+                nr = 1
+            note_[0].editorial.volta = nr
 
 
 # ---------- Câte două măsuri într-o paralelă, numerotate 1, 3, 5... ----------
@@ -272,6 +342,7 @@ def din_scor(scor: stream.Score, latime: int = 40, final: bool = True) -> str:
     for md in list(scor.getElementsByClass(metadata.Metadata)):
         scor.remove(md)
     _cu_bara_finala(scor, final)
+    _marcheaza_voltele(scor)
     parti = list(scor.parts)
     obiect = parti[0] if len(parti) == 1 else scor
     try:
