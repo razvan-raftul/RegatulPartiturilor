@@ -23,7 +23,7 @@ import wx.lib.scrolledpanel as scrolled  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import limba  # noqa: E402
 from nucleu.limba import _  # noqa: E402
-from nucleu import VERSIUNE, actualizare, auz, auz_absolut, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, auz_absolut, inregistrare, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
 
 NUME = 'Music Box'
 INDEMN = _('Nicio partitură deschisă. Deschide o partitură cu Control O.')
@@ -143,6 +143,7 @@ class Fereastra(wx.Frame):
         self._apasate = {}                   # tasta fizică -> nota care sună
         self._vibrato = claviatura.Vibrato(self.sint)
         self._bender_apasat = False
+        self.player_audio = inregistrare.PlayerAudio()
         self._midi_cache = (None, None, None, [])  # (selecția, MIDI la 100%, bătăile, măsurile): nu se mai face din nou la fiecare tempo
         self._redat = None                   # (selecția, procentul, metronomul) cu care se cântă acum
         self._tempo_amanat = None
@@ -568,6 +569,7 @@ class Fereastra(wx.Frame):
         self.actualizeaza()
         self.SetStatusText(_('Deschisă: {0}. {1} măsuri.', P.titlu, len(P.numere)))
         self.p_player.reimprospateaza()
+        self.p_player.pregateste()
         self.lista.SetFocus()
         if fis_brf:
             self.mesaj(_('Gata. Fișierul Braille e salvat în Documente, în folderul Music Box, la {0}, cu numele {1}.\n\n', os.path.basename(os.path.dirname(fis_brf)), os.path.basename(fis_brf)) +
@@ -722,20 +724,9 @@ class Fereastra(wx.Frame):
 
     def _porneste(self, sel, de_la_ms=0, in_pauza=False):
         """Cântă selecția la tempoul de acum. MIDI-ul de bază se face o singură dată pentru o selecție."""
-        if self._midi_cache[0] != sel:
-            _x, prima, ultima, port = sel
-            bucata = self.P.extrage(prima, ultima, list(port))
-            try:
-                batai = redare.batai(bucata)
-            except Exception:
-                traceback.print_exc()
-                batai = []
-            try:
-                masuri = redare.masuri(bucata)
-            except Exception:
-                traceback.print_exc()
-                masuri = []
-            self._midi_cache = (sel, redare.midi_octeti(bucata), batai, masuri)
+        if self.player_audio.stare == 'canta':
+            self.player_audio.pauza_continua()       # playerul cu înregistrare tace cât cânți din fila 1
+        self._midi_pentru(sel)
         self.sint.elibereaza()               # la sintetizatorul Windows: îl folosește acum redarea piesei
         date = self._midi_cache[1]
         metronom = self.volum_metronom if self.metronom else 0
@@ -751,6 +742,24 @@ class Fereastra(wx.Frame):
             self._harta = list(zip(redare.milisecunde(date, [q for q, _n in masuri]), [n for _q, n in masuri]))
         except Exception:
             self._harta = []
+
+    def _midi_pentru(self, sel):
+        """(MIDI la 100%, bătăile, măsurile) pentru selecție, făcute o singură dată."""
+        if self._midi_cache[0] != sel:
+            _x, prima, ultima, port = sel
+            bucata = self.P.extrage(prima, ultima, list(port))
+            try:
+                batai = redare.batai(bucata)
+            except Exception:
+                traceback.print_exc()
+                batai = []
+            try:
+                masuri = redare.masuri(bucata)
+            except Exception:
+                traceback.print_exc()
+                masuri = []
+            self._midi_cache = (sel, redare.midi_octeti(bucata), batai, masuri)
+        return self._midi_cache[1:]
 
     def _portative_alese(self):
         k = self.portative.GetSelection()
@@ -957,6 +966,7 @@ class Fereastra(wx.Frame):
         self.setari['metronom'] = self.metronom
         self.setari['metronom_volum'] = self.volum_metronom
         scrie_setari(self.setari)
+        self.p_player.aplica()                   # playerul cu înregistrare: tempoul și metronomul se schimbă pe loc
         metronom = self.volum_metronom if self.metronom else 0
         if self.redare.stare in ('canta', 'pauza') and self._redat and self._redat[1:] != (self.procent, metronom):
             sel, vechi, _x = self._redat
@@ -2557,6 +2567,7 @@ class Fereastra(wx.Frame):
 
     def la_inchidere(self, e):
         self.redare.opreste()
+        self.player_audio.opreste()
         self.midi.inchide()
         self.sint.inchide()
         if getattr(self, '_ciorna_amanata', None):
@@ -2660,6 +2671,10 @@ class PaginaPlayer(wx.Panel):
         s = wx.BoxSizer(wx.VERTICAL)
         # un singur rând, fără etichetă: NVDA spune doar piesa (scurtăturile sunt la F1)
         self.t = wx.TextCtrl(self, style=wx.TE_READONLY, name='', value=_('Nicio piesă deschisă.'))
+        self._inreg = {'cheie': None, 'gata': False, 'procent': 0, 'eroare': None}
+        self._porneste_dupa = False
+        self._terminat = False
+        self._harta_audio = []
         s.Add(self.t, 0, wx.EXPAND | wx.ALL, 2)
         self.SetSizer(s)
 
@@ -2724,6 +2739,8 @@ class PaginaPlayer(wx.Panel):
                 voce.spune(_('Deschide întâi o partitură.'), intrerupe=True)
                 return True
             return False
+        if self._audio():
+            return self._tasta_audio(k, sc)
         r = self.f.redare
         if r.stare != 'oprit' and not self._al_meu():
             r.opreste()                           # se cânta altceva (o măsură): playerul pornește piesa întreagă
@@ -2762,6 +2779,149 @@ class PaginaPlayer(wx.Panel):
             else:
                 r.sari(0)
             self._unde(0)
+            return True
+        return False
+
+
+    # ---------------- playerul cu înregistrare (nucleu\inregistrare.py) ----------------
+    def _audio(self):
+        """Înregistrarea se poate face doar cu FluidSynth și banca de sunete; altfel playerul merge ca înainte."""
+        return os.name == 'nt' and sunete.exista()
+
+    def pregateste(self):
+        """La deschiderea unei partituri: face înregistrarea piesei întregi, în fundal."""
+        self.f.player_audio.incarca(None)
+        self._inreg = {'cheie': None, 'gata': False, 'procent': 0, 'eroare': None}
+        self._porneste_dupa = False
+        self._terminat = False
+        if not self.f.P or not self._audio():
+            return
+        cheie = self.sel
+        self._inreg['cheie'] = cheie
+        wx.CallLater(300, self._pregateste_midi, cheie)
+
+    def _pregateste_midi(self, cheie):
+        if not self.f.P or self.sel != cheie or self._inreg['cheie'] != cheie:
+            return
+        try:
+            date, batai, masuri = self.f._midi_pentru(cheie)
+            ms_batai = redare.milisecunde(date, [q for q, _p in batai]) if batai else []
+            momente = list(zip(ms_batai, [p for _q, p in batai]))
+            harta = list(zip(redare.milisecunde(date, [q for q, _n in masuri]), [n for _q, n in masuri])) if masuri else []
+        except Exception as ex:
+            traceback.print_exc()
+            self._inreg['eroare'] = str(ex)
+            return
+
+        def progres(p):
+            self._inreg['procent'] = p
+
+        def lucru():
+            try:
+                sunet = inregistrare.randeaza(date, progres, oprit=lambda: self._inreg.get('cheie') != cheie)
+                met = inregistrare.pista_metronom(len(sunet), momente) if sunet is not None else None
+                wx.CallAfter(self._gata, cheie, sunet, met, harta, None)
+            except Exception as ex:
+                traceback.print_exc()
+                wx.CallAfter(self._gata, cheie, None, None, harta, str(ex))
+        threading.Thread(target=lucru, daemon=True).start()
+
+    def _gata(self, cheie, sunet, met, harta, eroare):
+        if self._inreg.get('cheie') != cheie:
+            return
+        if eroare or sunet is None:
+            self._inreg['eroare'] = eroare or ''
+            return
+        pa = self.f.player_audio
+        pa.incarca(sunet, met)
+        pa.la_sfarsit = lambda: setattr(self, '_terminat', True)
+        self._harta_audio = harta
+        self._inreg['gata'] = True
+        self.aplica()
+        if self._porneste_dupa:
+            self._porneste_dupa = False
+            if self.f.carte.GetCurrentPage() is self:
+                self.f.redare.opreste()
+                pa.canta(0)
+
+    def aplica(self):
+        """Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, volumul) se schimbă pe loc în înregistrare."""
+        pa = self.f.player_audio
+        pa.viteza = max(0.2, self.f.procent / 100)
+        pa.volum_metronom = (self.f.volum_metronom / 100) if self.f.metronom else 0.0
+
+    def _unde_audio(self, ms, spune=False):
+        """Timpul spus e cel adevărat, la tempoul de acum (la 50%, piesa ține de două ori mai mult)."""
+        pa = self.f.player_audio
+        v = pa.viteza or 1.0
+        text = _('{0} din {1}', self._timp(ms / v), self._timp(pa.lungime() / v))
+        nr = [n for t, n in getattr(self, '_harta_audio', []) if t <= ms + 50]
+        if nr:
+            text += ', ' + (_('Anacruza') if nr[-1] == 0 else _('Măsura {0}', nr[-1]).lower())
+        self.t.SetValue(text)
+        if spune:
+            voce.spune(text, intrerupe=True)
+
+    def _tasta_audio(self, k, sc):
+        pa = self.f.player_audio
+        inreg = getattr(self, '_inreg', None) or {}
+        taste_player = k in (ord('K'), ord('J'), ord('L'), ord('I'), wx.WXK_SPACE, wx.WXK_HOME, wx.WXK_ESCAPE) or \
+            sc in (0x25, 0x24, 0x26, 0x17)
+        if not taste_player:
+            return False
+        if k == wx.WXK_ESCAPE:
+            self._porneste_dupa = False
+            if pa.stare != 'oprit':
+                pa.opreste()
+                voce.spune(_('Oprit.'), intrerupe=True)
+                return True
+            return False
+        if not inreg.get('gata'):
+            if inreg.get('eroare') is not None:
+                voce.spune(_('Înregistrarea piesei nu s-a putut face. Eroare: {0}', inreg['eroare']), intrerupe=True)
+                return True
+            if inreg.get('cheie') is None:
+                self.pregateste()
+            if k == ord('K') or sc == 0x25 or k == wx.WXK_SPACE:
+                self._porneste_dupa = True
+            voce.spune(_('Se pregătește înregistrarea piesei, {0} la sută. Pornește singură când e gata.', inreg.get('procent', 0))
+                       if self._porneste_dupa else _('Se pregătește înregistrarea piesei, {0} la sută.', inreg.get('procent', 0)),
+                       intrerupe=True)
+            return True
+        self.f.redare.opreste()                    # dacă se cânta ceva din fila 1
+        self.aplica()
+        if k == ord('K') or sc == 0x25 or k == wx.WXK_SPACE:
+            if pa.stare == 'oprit':
+                self._terminat = False
+                pa.canta(0)
+            else:
+                pa.pauza_continua()                # fără să spună nimic
+            return True
+        if k == ord('I') or sc == 0x17:
+            ms = pa.pozitie() if pa.stare != 'oprit' else (pa.lungime() if self._terminat else 0)
+            self._unde_audio(ms, spune=True)
+            return True
+        if k in (ord('J'), ord('L')) or sc in (0x24, 0x26):
+            inainte = k == ord('L') or sc == 0x26
+            if pa.stare == 'oprit':
+                poz = pa.lungime() if (self._terminat and not inainte) else 0
+                self._terminat = False
+                pa.canta(poz, in_pauza=True)
+            else:
+                poz = pa.pozitie()
+            pas = self.PAS * pa.viteza                 # 5 secunde adevărate, la tempoul de acum
+            nou = poz + (pas if inainte else -pas)
+            nou = int(max(0, min(nou, max(0, pa.lungime() - 200))))
+            pa.sari(nou)
+            self._unde_audio(nou)
+            return True
+        if k == wx.WXK_HOME:
+            if pa.stare == 'oprit':
+                self._terminat = False
+                pa.canta(0)
+            else:
+                pa.sari(0)
+            self._unde_audio(0)
             return True
         return False
 
@@ -2837,6 +2997,21 @@ def autotest(fisier, iesire):
             sf.inchide()
         except Exception as ex:
             rez.append(f'SUNETE eroare: {ex} exista={sunete.exista()}')
+        try:
+            t0 = time.time()
+            _snd = inregistrare.randeaza(baza_midi)
+            _pa = inregistrare.PlayerAudio()
+            _pa.incarca(_snd, inregistrare.pista_metronom(len(_snd), [(0, True), (500, False)]))
+            _pa.volum_metronom = 0.5
+            _it = inregistrare.Intinzator(_pa._sursa, len(_snd))
+            _n = 0
+            while not _it.gata():
+                _it.bloc(0.6)
+                _n += 1
+            rez.append(f'INREGISTRARE {len(_snd) / inregistrare.RATA:.1f} s, varf {int(abs(_snd.astype("int32")).max())}, '
+                       f'{int((time.time() - t0) * 1000)} ms, la 60%: {_n * inregistrare.HOP / inregistrare.RATA:.1f} s')
+        except Exception as ex:
+            rez.append(f'INREGISTRARE eroare: {ex}')
         rez.append(f'MIDI clape {len(midi_in.dispozitive())}, setari {DIR_SETARI}')
         from nucleu import traduceri
         rez.append(f'LIMBA {limba.LIMBA}, traduceri {len(traduceri.T)}, en: {traduceri.T["Setări"]["en"]}')
