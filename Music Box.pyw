@@ -710,6 +710,7 @@ class Fereastra(wx.Frame):
         if not self.P:
             return
         s = self.selectie() or (self.P.numere[0], self.P.numere[-1], self._portative_alese())
+        self._sel_k = self._selectia_k()
         prima, ultima, port = s
         if pana_la_final:
             ultima = self.P.numere[-1]
@@ -748,6 +749,8 @@ class Fereastra(wx.Frame):
         if self._midi_cache[0] != sel:
             _x, prima, ultima, port = sel
             bucata = self.P.extrage(prima, ultima, list(port))
+            if (prima, ultima) != (self.P.numere[0], self.P.numere[-1]):
+                bucata = redare.fara_repetitii(bucata)      # doar o parte aleasă: se cântă exact ce e ales, o dată, în ordinea scrisă
             try:
                 batai = redare.batai(bucata)
             except Exception:
@@ -765,8 +768,19 @@ class Fereastra(wx.Frame):
         k = self.portative.GetSelection()
         return list(range(len(self.P.portative))) if k <= 0 else [k - 1]
 
+    def _selectia_k(self):
+        """Ce e ales acum (măsurile și portativele), ca să știm dacă s-a schimbat de la ultimul K."""
+        if not self.P:
+            return None
+        return (id(self.P), tuple(self.lista.GetSelections()), self.portative.GetSelection())
+
     def reda_sau_pauza(self):
-        """K: dacă nu se cântă nimic, redă selecția; altfel oprește sau continuă de unde a rămas."""
+        """K: dacă nu se cântă nimic, redă selecția; altfel oprește sau continuă de unde a rămas.
+        Dacă între timp ai ales altă măsură, K o ia de la capăt, de la măsura aleasă (cerut de Răzvan)."""
+        if not self.redare.terminat() and getattr(self, '_sel_k', None) != self._selectia_k():
+            self.redare.opreste()
+            self.reda(False)
+            return
         if self.redare.terminat():
             # s-a terminat (sau nu se cântă nimic): K o ia de la începutul selecției, ca Shift K
             self.redare.opreste()
