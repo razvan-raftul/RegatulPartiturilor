@@ -304,6 +304,34 @@ def schimba_tempo_midi(date: bytes, procent) -> bytes:
     return bytes(b)
 
 
+def fara_repetitii(s):
+    """O copie fără repetiții și volte: măsurile se cântă o singură dată, în ordinea în care sunt scrise.
+    (Copia e necesară: bucata din extrage() are aceleași măsuri ca partitura deschisă.)"""
+    s = copy.deepcopy(s)
+    for b in list(s.recurse().getElementsByClass(bar.Repeat)):
+        m = b.activeSite
+        if m is not None:
+            if getattr(m, 'rightBarline', None) is b:
+                m.rightBarline = None
+            elif getattr(m, 'leftBarline', None) is b:
+                m.leftBarline = None
+            else:
+                m.remove(b)
+    for sp in list(s.recurse().getElementsByClass(spanner.RepeatBracket)):
+        for loc in list(sp.sites.get()):
+            try:
+                loc.remove(sp)
+            except Exception:
+                pass
+    for p in getattr(s, 'parts', []):
+        for sp in list(p.spanners.getElementsByClass(spanner.RepeatBracket)):
+            p.remove(sp)
+    for ex in list(s.recurse().getElementsByClass(repeat.RepeatExpression)):
+        if ex.activeSite is not None:
+            ex.activeSite.remove(ex)
+    return s
+
+
 def scrie_temporar(date: bytes) -> str:
     d = os.path.join(tempfile.gettempdir(), 'RegatulPartiturilor')
     os.makedirs(d, exist_ok=True)
