@@ -50,6 +50,7 @@ class Melodie:
         self.stare = 'oprit'
         self.cale = None
         self.la_sfarsit = None
+        self.volum = 100                 # 0–100 la sută
         self._gen = 0
         self._lacat = threading.Lock()
 
@@ -72,6 +73,7 @@ class Melodie:
             tip = 'sequencer' if cale.lower().endswith(('.mid', '.midi')) else 'mpegvideo'
             self._mci(f'open "{cale}" type {tip} alias {_ALIAS}')
             self._mci(f'set {_ALIAS} time format milliseconds')
+            self._aplica_volum()
             self._mci(f'play {_ALIAS} from {max(0, int(de_la_ms))}')
             self.stare = 'canta'
             self._gen += 1
@@ -99,6 +101,19 @@ class Melodie:
                 if self.la_sfarsit:
                     self.la_sfarsit()
                 return
+
+    def _aplica_volum(self):
+        try:
+            self._mci(f'setaudio {_ALIAS} volume to {int(self.volum) * 10}')     # MCI: 0–1000
+        except Exception:
+            pass                          # MIDI (sequencer) nu are volum prin MCI
+
+    def schimba_volum(self, pas):
+        self.volum = max(0, min(100, self.volum + pas))
+        if self.stare != 'oprit':
+            with self._lacat:
+                self._aplica_volum()
+        return self.volum
 
     def pozitie(self):
         if self.stare == 'oprit' or not self.cale:
