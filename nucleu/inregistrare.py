@@ -56,7 +56,7 @@ def durata_midi_ms(date: bytes) -> int:
     return redare.milisecunde(date, [ultim / div])[0]
 
 
-def randeaza(date: bytes, progres=None, cale_dll=None, cale_sf2=None, oprit=None):
+def randeaza(date: bytes, progres=None, cale_dll=None, cale_sf2=None, oprit=None, normalizeaza=True):
     """MIDI (octeți) -> înregistrare stereo, numpy int16 de forma (cadre, 2), la 44100 Hz.
     progres(0..100) se cheamă din când în când; oprit() adevărat întrerupe (întoarce None)."""
     from . import sunete
@@ -102,7 +102,7 @@ def randeaza(date: bytes, progres=None, cale_dll=None, cale_sf2=None, oprit=None
             bucati.append(np.frombuffer(buf, dtype=np.int16).copy())
         sunet = np.concatenate(bucati).reshape(-1, 2) if bucati else np.zeros((0, 2), np.int16)
         varf = int(np.abs(sunet.astype(np.int32)).max()) if len(sunet) else 0
-        if 0 < varf < 24000:                                   # mai tare, până aproape de maxim (cel mult de 4 ori)
+        if normalizeaza and 0 < varf < 24000:                  # mai tare, până aproape de maxim (cel mult de 4 ori)
             sunet = (sunet.astype(np.float32) * min(4.0, 24000 / varf)).astype(np.int16)
         if progres:
             progres(100)
@@ -112,6 +112,23 @@ def randeaza(date: bytes, progres=None, cale_dll=None, cale_sf2=None, oprit=None
             f.delete_fluid_player(player)
         f.delete_fluid_synth(synth)
         f.delete_fluid_settings(s)
+
+
+def pe_maini(sunete):
+    """Înregistrările fiecărei mâini (sau portativ), nenormalizate -> (amestecul, [mâinile]), toate int16 de aceeași
+    lungime și cu același câștig (ca o mână singură să sune la fel de tare ca în amestec)."""
+    n = max(len(x) for x in sunete)
+    lungi = []
+    for x in sunete:
+        y = np.zeros((n, 2), np.int32)
+        y[:len(x)] = x
+        lungi.append(y)
+    mix = np.sum(lungi, axis=0)
+    varf = int(np.abs(mix).max()) if n else 0
+    castig = min(4.0, 24000 / varf) if varf else 1.0
+    def la16(a):
+        return np.clip(a.astype(np.float32) * castig, -32768, 32767).astype(np.int16)
+    return la16(mix), [la16(y) for y in lungi]
 
 
 def _clic(accent):
@@ -258,10 +275,12 @@ class PlayerAudio:
         self._poz = 0
 
     # ---- înregistrarea ----
-    def incarca(self, muzica, metronom=None):
+    def incarca(self, muzica, metronom=None, piste=None):
         self.opreste()
         self.muzica = muzica
         self.metronom = metronom
+        self.piste = piste or []      # fiecare mână (portativ) separat, de aceeași lungime ca amestecul
+        self.alese = None             # None = toate; altfel indicele mâinii care se aude
         self._poz = 0
 
     def are(self):
@@ -275,7 +294,8 @@ class PlayerAudio:
         out = np.zeros((b - a, 2), np.float32)
         i, j = max(0, a), min(n, b)
         if j > i:
-            out[i - a:j - a] = self.muzica[i:j]
+            sursa = self.piste[self.alese] if self.alese is not None and self.alese < len(self.piste) else self.muzica
+            out[i - a:j - a] = sursa[i:j]
             v = self.volum_metronom
             if v > 0 and self.metronom is not None:
                 out[i - a:j - a] += (self.metronom[i:j] * (v * 22000.0))[:, None]
