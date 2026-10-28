@@ -304,6 +304,26 @@ def schimba_tempo_midi(date: bytes, procent) -> bytes:
     return bytes(b)
 
 
+def cu_program(date: bytes, prog) -> bytes:
+    """Schimbă instrumentul (programul General MIDI și banca) pe toate canalele, afară de tobe (canalul 10)."""
+    banca, program = (0, prog) if isinstance(prog, int) else (int(prog[0]), int(prog[1]))
+    if banca >= 128:
+        return date                       # setul de tobe nu se poate pune peste melodie
+    fmt, div, piste = _citeste(date)
+    noi = []
+    for p in piste:
+        ev = []
+        for t, e in p:
+            if len(e) == 2 and (e[0] & 0xF0) == 0xC0 and (e[0] & 0x0F) != 9:
+                c = e[0] & 0x0F
+                ev.append((t, bytes([0xB0 | c, 0, min(127, banca)])))
+                ev.append((t, bytes([0xC0 | c, program & 0x7F])))
+            else:
+                ev.append((t, e))
+        noi.append(ev)
+    return _scrie(fmt, div, noi)
+
+
 def fara_repetitii(s):
     """O copie fără repetiții și volte: măsurile se cântă o singură dată, în ordinea în care sunt scrise.
     (Copia e necesară: bucata din extrage() are aceleași măsuri ca partitura deschisă.)"""

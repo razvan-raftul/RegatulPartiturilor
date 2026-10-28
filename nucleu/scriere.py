@@ -14,6 +14,8 @@ Cum se scrie (aceeași scriere ca „Scriere scurtă” din textul în cuvinte):
   triolet:  3( do4 o re4 o mi4 o )
 Armura se aplică singură, ca pe partitură (în Sol major fa e fa diez); o alterație ține toată măsura.
 Notele se pot despărți prin spații sau virgule. Un număr la începutul rândului, cu două puncte („3:”), se ignoră.
+Versurile (câmpul lor): cuvintele despărțite prin spații, silabele prin cratimă: „Ma-mă dra-gă”. Fiecare silabă
+  merge pe nota următoare a mâinii drepte (pauzele și notele legate de cea dinainte se sar); „_” lasă o notă fără silabă.
 """
 import re
 
@@ -254,8 +256,57 @@ def randuri(text: str) -> list:
     return r
 
 
+def silabe(versuri: str):
+    """„Ma-mă dra-gă _ eu” -> [('Ma', 'begin'), ('mă', 'end'), ('dra', 'begin'), ('gă', 'end'), None, ('eu', 'single')]."""
+    rez = []
+    for cuv in versuri.replace('\n', ' ').split():
+        if cuv == '_':
+            rez.append(None)
+            continue
+        bucati = [b for b in cuv.split('-') if b]
+        for j, b in enumerate(bucati):
+            if len(bucati) == 1:
+                tip = 'single'
+            else:
+                tip = 'begin' if j == 0 else ('end' if j == len(bucati) - 1 else 'middle')
+            rez.append((b, tip))
+    return rez
+
+
+def pune_versuri(parte, versuri: str):
+    """Pune silabele pe notele părții, în ordine. Întoarce câte silabe au rămas fără notă."""
+    sil = silabe(versuri)
+    k = 0
+    for el in parte.recurse().notes:
+        if k >= len(sil):
+            break
+        if el.tie is not None and el.tie.type in ('stop', 'continue'):
+            continue
+        s = sil[k]
+        k += 1
+        if s is not None:
+            el.lyrics.append(note.Lyric(text=s[0], syllabic=s[1]))
+    return len([x for x in sil[k:] if x is not None])
+
+
+def timpi_rand(text: str, index: int, masura='4/4', alteratii=0, octava=4):
+    """(câți timpi are rândul index, câți trebuie) — rândurile de dinainte se citesc și ele, pentru durata
+    care se păstrează de la o notă la alta. None dacă ceva nu se poate citi."""
+    rr = text.replace('\r\n', '\n').split('\n')
+    stare = _Stare(octava)
+    armura = _armura(alteratii)
+    total = 0.0
+    try:
+        for k, r in enumerate(rr[:index + 1]):
+            el = citeste_masura(r, stare, armura, k + 1, 'mâna dreaptă')
+            total = sum(float(e.duration.quarterLength) for e in el)
+    except Exception:
+        return None
+    return total, float(meter.TimeSignature(masura).barDuration.quarterLength)
+
+
 def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4', alteratii=0, tempo_p=0,
-                 anacruza=False):
+                 anacruza=False, versuri=''):
     """Partitura music21 din textul celor două mâini. Întoarce (scor, probleme): probleme = lista măsurilor
     care nu au durata potrivită (nu oprește construirea). Aruncă EroareScriere pentru ce nu se poate citi."""
     rd, rs = randuri(dreapta), randuri(stanga)
@@ -309,6 +360,10 @@ def construieste(dreapta: str, stanga: str, titlu='', compozitor='', masura='4/4
                 m.rightBarline = bar.Barline('final')
             parte.append(m)
         _leaga(parte)
+        if versuri.strip() and mana == 'mâna dreaptă':
+            ramase = pune_versuri(parte, versuri)
+            if ramase:
+                probleme.append(_('Versurile au {0} silabe în plus, fără note.', ramase))
         parti.append(parte)
     for p in parti:
         scor.insert(0, p)

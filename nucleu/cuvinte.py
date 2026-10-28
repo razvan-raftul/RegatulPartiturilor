@@ -194,6 +194,15 @@ def descrie_element(el, opt: Optiuni, durata=None, legat=None) -> str:
     s = ' '.join(parti)
     if extra:
         s += ' (' + ', '.join(extra) + ')'
+    silabe = [ly for ly in getattr(el, 'lyrics', []) if ly.text]
+    if silabe:                      # versurile: silaba de sub notă, cu cratimă unde cuvântul continuă
+        ly = silabe[0]
+        t = ly.text
+        if ly.syllabic in ('begin', 'middle'):
+            t += '-'
+        if ly.syllabic in ('middle', 'end'):
+            t = '-' + t
+        s += ' „' + t + '”'
     return s
 
 
