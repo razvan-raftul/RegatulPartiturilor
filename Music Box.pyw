@@ -33,7 +33,8 @@ FIS_SETARI = os.path.join(DIR_SETARI, 'setari.json')
 OCTAVE = [('fara', _('Fără octavă')), ('numere', _('Octava cu număr (do 4)')), ('nume', _('Octava cu nume (do din octava întâi)'))]
 FILTRU = (_('Toate partiturile|') + ';'.join('*' + e for e in partitura.TOATE_FORMATELE) +
           _('|MusicXML (*.musicxml, *.xml, *.mxl)|*.musicxml;*.xml;*.mxl|MIDI (*.mid)|*.mid;*.midi|MuseScore (*.mscz)|*.mscz;*.mscx'
-          '|PDF și imagini|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff|Toate fișierele|*.*'))
+          '|PDF și imagini|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff|Toate fișierele|*.*') +
+          '|Braille (*.brl, *.brf)|*.brl;*.brf')
 SCURTATURI = _("""Scurtături în Music Box
 
 Control plus O: deschide o partitură.
@@ -484,7 +485,7 @@ class Fereastra(wx.Frame):
                       dupa=lambda: shutil.rmtree(d_tmp, ignore_errors=True), fara_cuprins=True)
 
     def deschide(self, cale, pastreaza=True, titlu=None, dupa=None, brf=False, baza=None, folder=None, original=None,
-                 fara_cuprins=False):
+                 fara_cuprins=False, piesa=None):
         """Deschide o partitură. pastreaza=False: nu se salvează nimic (pagini din aplicațiile editurilor);
         titlu: numele afișat; dupa: funcție chemată la final (de exemplu ștergerea pozei); brf: salvează și BRF în Documente\\Music Box\\<nume PDF>."""
         if self._ocupat_recunoastere:
@@ -493,6 +494,20 @@ class Fereastra(wx.Frame):
                 dupa()
             return
         e_imagine = os.path.splitext(cale)[1].lower() in partitura.FORMATE_IMAGINE
+        if os.path.splitext(cale)[1].lower() in partitura.FORMATE_BRAILLE and piesa is None:
+            # un fișier Braille cu mai multe piese (de ex. o culegere de solfegii): alegi piesa
+            try:
+                from nucleu import din_braille
+                tt = din_braille.titluri(cale)
+            except Exception:
+                tt = []
+            if len(tt) > 1:
+                with wx.SingleChoiceDialog(self, _('Fișierul are {0} piese. Pe care o deschizi?', len(tt)),
+                                           _('Alege piesa'), tt) as d:
+                    if d.ShowModal() != wx.ID_OK:
+                        return
+                    piesa = d.GetSelection()
+                    titlu = titlu or tt[piesa]
         if (not fara_cuprins and pastreaza and cale.lower().endswith('.pdf')
                 and self._pagini(cale) > 2):
             self.deschide_carte(cale, brf=brf)
@@ -523,7 +538,7 @@ class Fereastra(wx.Frame):
                         original_l = cale
                         baza_l = baza or os.path.splitext(os.path.basename(cale))[0]
                 P = partitura.incarca(cale_l, progres=lambda m: wx.CallAfter(self.SetStatusText, m), pastreaza=pastreaza,
-                                      baza=baza_l, folder=folder, original=original_l)
+                                      baza=baza_l, folder=folder, original=original_l, piesa=piesa)
                 if titlu and P.scor.metadata is not None:
                     P.scor.metadata.title = titlu
                 P.fara_salvare = not pastreaza
@@ -3408,6 +3423,15 @@ def autotest(fisier, iesire):
         rez.append('SCRIERE LITERE ' + str(len(scriere.construieste('c4p d e f\nbb4d c#5d', '')[0].parts[0].recurse().notes)))
         _sv, _pv = scriere.construieste('do4 p re mi fa', '', versuri='Ma-mă dra-gă')
         rez.append(f'VERSURI {[ly.text for n in _sv.recurse().notes for ly in n.lyrics]} TIMPI {scriere.timpi_rand("do4 s re mi fa sol la si do5 do si4 la sol fa mi re do", 0)}')
+        try:
+            from nucleu import din_braille
+            _tb = os.path.join(tempfile.gettempdir(), 'proba-din-braille.brf')
+            with open(_tb, 'w', encoding='ascii', errors='replace', newline='') as _fh:
+                _fh.write(braille.la_brf(braille.din_scor(P.extrage(P.numere[0], P.numere[-1], list(range(len(P.portative)))))))
+            _rb = din_braille.din_fisier(_tb)
+            rez.append(f'DIN BRAILLE {len(_rb)} piese, de verificat {len(_rb[0][2])}, note {len(list(_rb[0][1].recurse().notes))} din {len(list(P.scor.recurse().notes))}')
+        except Exception as ex:
+            rez.append(f'DIN BRAILLE eroare: {ex}')
         rez.append(f'PARTITURILE MELE {len(f._ids)} fisiere, curenta {f._curenta}; FOLDERE AUDIO {len(f.p_fisiere.butoane)}')
         try:
             sf = sunete.SintetizatorFluid()
