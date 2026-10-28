@@ -11,7 +11,8 @@ from .limba import _
 FORMATE_DIRECTE = ('.musicxml', '.xml', '.mxl', '.mid', '.midi', '.abc', '.krn', '.mei')
 FORMATE_MUSESCORE = ('.mscz', '.mscx')
 FORMATE_IMAGINE = ('.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
-TOATE_FORMATELE = FORMATE_DIRECTE + FORMATE_MUSESCORE + FORMATE_IMAGINE
+FORMATE_BRAILLE = ('.brl', '.brf')
+TOATE_FORMATELE = FORMATE_DIRECTE + FORMATE_MUSESCORE + FORMATE_IMAGINE + FORMATE_BRAILLE
 
 
 class EroarePartitura(Exception):
@@ -197,7 +198,7 @@ class Partitura:
         return sc
 
 
-def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, original=None) -> Partitura:
+def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, original=None, piesa=None) -> Partitura:
     """baza/folder/original: la o singură piesă dintr-o carte (cale = PDF temporar cu paginile ei)."""
     ext = os.path.splitext(cale)[1].lower()
     avert = []
@@ -223,6 +224,16 @@ def incarca(cale: str, progres=None, pastreaza=True, baza=None, folder=None, ori
             avert.append(_('Nu a mers: ') + '; '.join(r.probleme)[:300])
     elif ext in FORMATE_DIRECTE:
         scor = converter.parse(cale)
+    elif ext in FORMATE_BRAILLE:
+        from . import din_braille
+        piese = din_braille.din_fisier(cale)
+        if not piese:
+            raise EroarePartitura(_('În fișierul Braille nu am găsit muzică.'))
+        titlu_b, scor, dv = piese[min(len(piese) - 1, max(0, piesa or 0))]
+        nesigure = {nr: '; '.join(m) for nr, m in dv.items()}
+        avert.append(_('Partitura e citită din Braille muzical.'))
+        if nesigure:
+            avert.append(_('Măsuri de verificat: {0}, marcate în listă cu „de verificat”. Control U duce la următoarea.', len(nesigure)))
     else:
         raise EroarePartitura(_('Formatul acesta nu e cunoscut. Merg: MusicXML, MXL, MIDI, MuseScore, PDF și imagini.'))
     if isinstance(scor, stream.Opus):

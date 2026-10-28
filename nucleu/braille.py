@@ -103,7 +103,10 @@ def _volta(obiect):
     return ('\u283c' + _CIFRE_JOS.get(nr, '\u2802')) if nr else ''
 
 
-def _nota(n, **kw):
+def _nota(n=None, **kw):
+    # music21 o cheamă și cu numele argumentului (music21Note=...), de exemplu la acorduri
+    if n is None:
+        n = kw.pop('music21Note')
     v = _volta(n)
     if v:
         kw['showOctave'] = True
