@@ -678,7 +678,7 @@ class Fereastra(wx.Frame):
 
     def _pagina(self):
         """Fila deschisă; la Partituri, subfila deschisă (În cuvinte, Braille sau Player)."""
-        p = self._pagina()
+        p = self.carte.GetCurrentPage()
         return self.carte_p.GetCurrentPage() if p is self.p_partituri else p
 
     def arata(self, pagina, ciclu=False):
@@ -686,7 +686,7 @@ class Fereastra(wx.Frame):
         ciclu: Control 3 apăsat când ești deja în Partituri trece la subfila următoare."""
         if pagina == 2:
             k = self.carte_p.GetSelection()
-            if ciclu and self._pagina() is self.p_partituri:
+            if ciclu and self.carte.GetCurrentPage() is self.p_partituri:
                 k = (k + 1) % self.carte_p.GetPageCount()
             self.arata_sub(max(0, k))
             return
