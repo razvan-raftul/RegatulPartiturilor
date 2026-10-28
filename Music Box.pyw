@@ -23,7 +23,7 @@ import wx.lib.scrolledpanel as scrolled  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import limba  # noqa: E402
 from nucleu.limba import _  # noqa: E402
-from nucleu import VERSIUNE, actualizare, auz, auz_absolut, inregistrare, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, auz_absolut, fisiere_audio, inregistrare, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
 
 NUME = 'Music Box'
 INDEMN = _('Nicio partitură deschisă. Deschide o partitură cu Control O.')
@@ -206,6 +206,7 @@ class Fereastra(wx.Frame):
         self._m(n, _('Scrie o partitură\tCtrl+5'), lambda e: self.arata(4))
         self._m(n, _('Exerciții de auz\tCtrl+6'), lambda e: self.arata(5))
         self._m(n, _('Setările\tCtrl+7'), lambda e: self.arata(6))
+        self._m(n, _('Fișiere audio dintr-un folder\tCtrl+8'), lambda e: self.arata(7))
         self._m(n, _('Lista de măsuri\tCtrl+L'), lambda e: self.lista.SetFocus())
         mb.Append(n, _('&Navigare'))
         r = wx.Menu()
@@ -229,7 +230,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control Shift minus)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 2): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(SCURTATURI + '\n\n' + _('Player (Control 2): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + '\n\n' + _('Fișiere audio (Control 8): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -341,6 +342,8 @@ class Fereastra(wx.Frame):
         ps.SetSizer(ss)
         ps.SetupScrolling(scroll_x=False)
         self.carte.AddPage(ps, _('Setări'))
+        self.p_fisiere = PaginaFisiere(self.carte, self)
+        self.carte.AddPage(self.p_fisiere, _('Fișiere audio'))
         self.s_limba.Bind(wx.EVT_CHOICE, self._schimba_limba)
         self.s_midi.Bind(wx.EVT_CHOICE, lambda e: self._alege_midi())
         self.s_latenta.Bind(wx.EVT_CHOICE, lambda e: self._alege_latenta())
@@ -640,7 +643,8 @@ class Fereastra(wx.Frame):
 
     def arata(self, pagina):
         self.carte.SetSelection(pagina)
-        (self.t_cuvinte, self.p_player.t, self.t_braille, self.t_clav, self.w_titlu, self.a_ex, self.s_limba)[pagina].SetFocus()
+        (self.t_cuvinte, self.p_player.t, self.t_braille, self.t_clav, self.w_titlu, self.a_ex, self.s_limba,
+         self.p_fisiere.de_focus())[pagina].SetFocus()
         if self.carte.GetPage(pagina) is self.p_braille:
             self.actualizeaza_braille()
 
@@ -727,6 +731,8 @@ class Fereastra(wx.Frame):
         """Cântă selecția la tempoul de acum. MIDI-ul de bază se face o singură dată pentru o selecție."""
         if self.player_audio.stare == 'canta':
             self.player_audio.pauza_continua()       # playerul cu înregistrare tace cât cânți din fila 1
+        if self.p_fisiere.melodie.stare == 'canta':
+            self.p_fisiere.melodie.pauza_continua()
         self._midi_pentru(sel)
         self.sint.elibereaza()               # la sintetizatorul Windows: îl folosește acum redarea piesei
         date = self._midi_cache[1]
@@ -1000,6 +1006,9 @@ class Fereastra(wx.Frame):
         def eticheta(text):
             sw.Add(wx.StaticText(pw, label=text), 0, wx.LEFT | wx.TOP, 4)
 
+        eticheta(_('Partiturile mele (săgeți sus și jos: alegi; Control S: salvezi)'))
+        self.w_lista = wx.ListBox(pw, name=_('Partiturile mele'), size=(-1, 110))
+        sw.Add(self.w_lista, 0, wx.EXPAND | wx.ALL, 3)
         eticheta(_('Titlu'))
         self.w_titlu = wx.TextCtrl(pw, name=_('Titlu'))
         sw.Add(self.w_titlu, 0, wx.EXPAND | wx.ALL, 3)
@@ -1023,9 +1032,15 @@ class Fereastra(wx.Frame):
         eticheta(_('Mâna stângă, câte o măsură pe rând (gol = doar mâna dreaptă)'))
         self.w_st = wx.TextCtrl(pw, style=wx.TE_MULTILINE | wx.TE_RICH2, size=(-1, 110), name=_('Mâna stângă, câte o măsură pe rând'))
         sw.Add(self.w_st, 1, wx.EXPAND | wx.ALL, 3)
+        eticheta(_('Versuri: cuvintele prin spații, silabele prin cratimă (Ma-mă dra-gă); câte o silabă pe fiecare notă a mâinii drepte'))
+        self.w_vers = wx.TextCtrl(pw, style=wx.TE_MULTILINE | wx.TE_RICH2, size=(-1, 70), name=_('Versuri'))
+        sw.Add(self.w_vers, 0, wx.EXPAND | wx.ALL, 3)
+        eticheta(_('Sunetul partiturii (spațiu deschide o categorie, Enter alege)'))
+        self.w_instr, self._noduri_scriere = self._arbore_instrumente(pw, _('Sunetul partiturii'))
+        sw.Add(self.w_instr, 0, wx.EXPAND | wx.ALL, 3)
         rand = wx.WrapSizer()
         for text, fn in ((_('Verifică'), self.scriere_verifica),
-                         (_('Ascultă tot'), lambda e: self.scriere_asculta(False)),
+                         (_('Ascultă tot (Control Shift Enter)'), lambda e: self.scriere_asculta(False)),
                          (_('Deschide pentru citit (În cuvinte, Braille, redare)'), self.scriere_deschide),
                          (_('Salvează ca MusicXML...'), lambda e: self.scriere_salveaza(False)),
                          (_('Salvează ca BRF...'), lambda e: self.scriere_salveaza(True)),
@@ -1039,8 +1054,11 @@ class Fereastra(wx.Frame):
         pw.SetupScrolling(scroll_x=False)
         self.carte.AddPage(pw, _('Scrie o partitură'))
         self._ciorna_amanata = None
+        self._w_instrument = (0, 0)
         self._scriere_incarca_ciorna()
-        for c in (self.w_titlu, self.w_comp, self.w_dr, self.w_st):
+        self.w_lista.Bind(wx.EVT_LISTBOX, lambda e: self._scriere_alege_din_lista())
+        self.w_instr.Bind(wx.EVT_TREE_ITEM_ACTIVATED, lambda e: self._alege_sunet_scriere(e.GetItem()))
+        for c in (self.w_titlu, self.w_comp, self.w_dr, self.w_st, self.w_vers):
             c.Bind(wx.EVT_TEXT, self._ciorna_schimbata)
         for c in (self.w_masura, self.w_ton):
             c.Bind(wx.EVT_CHOICE, self._ciorna_schimbata)
@@ -1054,7 +1072,8 @@ class Fereastra(wx.Frame):
                 'masura': scriere.MASURI[max(0, self.w_masura.GetSelection())],
                 'alteratii': scriere.TONALITATI[max(0, self.w_ton.GetSelection())][0],
                 'tempo': self.w_tempo.GetValue(), 'anacruza': self.w_ana.GetValue(),
-                'dreapta': self.w_dr.GetValue(), 'stanga': self.w_st.GetValue()}
+                'dreapta': self.w_dr.GetValue(), 'stanga': self.w_st.GetValue(), 'versuri': self.w_vers.GetValue(),
+                'instrument': list(self._w_instrument)}
 
     def _scriere_pune(self, d):
         self.w_titlu.ChangeValue(d.get('titlu', ''))
@@ -1067,13 +1086,70 @@ class Fereastra(wx.Frame):
         self.w_ana.SetValue(bool(d.get('anacruza', False)))
         self.w_dr.ChangeValue(d.get('dreapta', ''))
         self.w_st.ChangeValue(d.get('stanga', ''))
+        self.w_vers.ChangeValue(d.get('versuri', ''))
+        self._w_instrument = tuple(d.get('instrument', (0, 0)))
+        progs = [tuple(x[2]) for x in self.instrumente]
+        if self._w_instrument in progs:
+            self._selecteaza_in_arbore(self.w_instr, self._noduri_scriere, progs.index(self._w_instrument))
+
+    _DIR_PARTITURI = os.path.join(DIR_SETARI, 'Partiturile mele')
+
+    def _scriere_fisiere(self):
+        """Partiturile mele: fișierele .json din %APPDATA%\\Music Box\\Partiturile mele, cele mai noi întâi."""
+        try:
+            n = [f[:-5] for f in os.listdir(self._DIR_PARTITURI) if f.endswith('.json')]
+        except OSError:
+            n = []
+        return sorted(n, reverse=True)
+
+    def _scriere_citeste(self, id_):
+        try:
+            with open(os.path.join(self._DIR_PARTITURI, id_ + '.json'), encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _scriere_id_nou(self):
+        return time.strftime('%Y%m%d-%H%M%S') + f'-{int(time.time() * 1000) % 1000:03d}'
+
+    def _scriere_reface_lista(self):
+        self._ids = self._scriere_fisiere()
+        nume = []
+        for i in self._ids:
+            d = self._scriere_citeste(i) if i != self._curenta else self._scriere_date()
+            nume.append((d.get('titlu') or '').strip() or _('Fără titlu'))
+        self.w_lista.Set(nume)
+        if self._curenta in self._ids:
+            self.w_lista.SetSelection(self._ids.index(self._curenta))
 
     def _scriere_incarca_ciorna(self):
-        try:
-            with open(self._FIS_CIORNA, encoding='utf-8') as f:
-                self._scriere_pune(json.load(f))
-        except Exception:
-            self._scriere_pune({})
+        os.makedirs(self._DIR_PARTITURI, exist_ok=True)
+        ids = self._scriere_fisiere()
+        if not ids:
+            # prima dată: ciorna veche devine prima partitură din listă
+            try:
+                with open(self._FIS_CIORNA, encoding='utf-8') as f:
+                    d = json.load(f)
+            except Exception:
+                d = {}
+            id_ = self._scriere_id_nou()
+            with open(os.path.join(self._DIR_PARTITURI, id_ + '.json'), 'w', encoding='utf-8') as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            ids = [id_]
+        cur = self.setari.get('scriere_curenta')
+        self._curenta = cur if cur in ids else ids[0]
+        self._scriere_pune(self._scriere_citeste(self._curenta))
+        self._scriere_reface_lista()
+
+    def _scriere_alege_din_lista(self):
+        k = self.w_lista.GetSelection()
+        if k < 0 or k >= len(self._ids) or self._ids[k] == self._curenta:
+            return
+        self._salveaza_ciorna()
+        self._curenta = self._ids[k]
+        self.setari['scriere_curenta'] = self._curenta
+        scrie_setari(self.setari)
+        self._scriere_pune(self._scriere_citeste(self._curenta))
 
     def _ciorna_schimbata(self, e=None):
         # ce scrii se păstrează singur (și după ce închizi programul), la o secundă după ultima tastă
@@ -1083,21 +1159,32 @@ class Fereastra(wx.Frame):
         if e:
             e.Skip()
 
-    def _salveaza_ciorna(self):
+    def _salveaza_ciorna(self, spune=False):
+        """Partitura la care lucrezi se scrie în Partiturile mele (singură, la o secundă după ce te oprești,
+        și cu Control S)."""
+        if self._ciorna_amanata:
+            self._ciorna_amanata.Stop()
         self._ciorna_amanata = None
         try:
-            os.makedirs(DIR_SETARI, exist_ok=True)
-            with open(self._FIS_CIORNA, 'w', encoding='utf-8') as f:
+            os.makedirs(self._DIR_PARTITURI, exist_ok=True)
+            with open(os.path.join(self._DIR_PARTITURI, self._curenta + '.json'), 'w', encoding='utf-8') as f:
                 json.dump(self._scriere_date(), f, ensure_ascii=False, indent=1)
-        except Exception:
-            pass
+            k = self._ids.index(self._curenta) if self._curenta in getattr(self, '_ids', []) else -1
+            nume = self.w_titlu.GetValue().strip() or _('Fără titlu')
+            if k >= 0 and self.w_lista.GetString(k) != nume:
+                self.w_lista.SetString(k, nume)
+            if spune:
+                voce.spune(_('Salvat: {0}.', nume), intrerupe=True)
+        except Exception as ex:
+            if spune:
+                voce.spune(_('Nu am putut salva. Eroare: {0}', ex), intrerupe=True)
 
     def _scriere_scor(self, arata_erori=True):
         """(scor, probleme) sau (None, None) dacă textul are greșeli care nu se pot citi."""
         d = self._scriere_date()
         try:
             return scriere.construieste(d['dreapta'], d['stanga'], d['titlu'], d['compozitor'], d['masura'],
-                                        d['alteratii'], d['tempo'], d['anacruza'])
+                                        d['alteratii'], d['tempo'], d['anacruza'], d.get('versuri', ''))
         except scriere.EroareScriere as ex:
             if arata_erori:
                 self.mesaj(str(ex), _('Greșeală în scriere'))
@@ -1147,7 +1234,7 @@ class Fereastra(wx.Frame):
                     voce.spune(_('Măsura asta e goală.'), intrerupe=True)
                     return
                 bucata = P.extrage(nr, nr, list(range(len(P.portative))))
-            date = redare.midi_octeti(bucata)
+            date = redare.cu_program(redare.midi_octeti(bucata), self._w_instrument)
             if self.metronom:
                 date = redare.cu_metronom(date, redare.batai(bucata), self.volum_metronom)
             date = redare.schimba_tempo_midi(date, self.procent)
@@ -1196,12 +1283,65 @@ class Fereastra(wx.Frame):
         self._anunta_salvat(cale)
 
     def scriere_noua(self, e=None):
-        if (self.w_dr.GetValue().strip() or self.w_st.GetValue().strip()) and wx.MessageBox(
-                'Ștergi tot ce ai scris și începi o partitură nouă?', 'Partitură nouă', wx.YES_NO | wx.NO_DEFAULT, self) != wx.YES:
-            return
+        """O partitură nouă în Partiturile mele; cele vechi rămân în listă."""
+        self._salveaza_ciorna()
+        self._curenta = self._scriere_id_nou()
         self._scriere_pune({})
         self._salveaza_ciorna()
+        self.setari['scriere_curenta'] = self._curenta
+        scrie_setari(self.setari)
+        self._scriere_reface_lista()
         self.w_titlu.SetFocus()
+
+    def _alege_sunet_scriere(self, it):
+        if not it.IsOk() or self.w_instr.ItemHasChildren(it):
+            return
+        k = self.w_instr.GetItemData(it)
+        if not isinstance(k, int):
+            return
+        _cat, nume, prog = self.instrumente[k]
+        self._w_instrument = tuple(prog)
+        self._ciorna_schimbata()
+        voce.spune(_('Sunetul partiturii: {0}.', nume), intrerupe=True)
+
+    def _scriere_masura_plina(self, c):
+        """Spațiu la capătul unui rând: dacă rândul are deja toți timpii măsurii, cursorul trece singur
+        pe rândul următor (ca Enter). Întoarce True dacă a trecut."""
+        pos = c.GetInsertionPoint()
+        txt = c.GetValue()
+        dupa = txt[pos:]
+        if dupa.split('\n', 1)[0].strip():
+            return False                     # nu ești la capătul rândului
+        rest = dupa.split('\n', 1)[1] if '\n' in dupa else ''
+        if '\n' in dupa and rest.split('\n', 1)[0].strip():
+            return False                     # rândul următor e deja scris: nu mai adaug altul
+        inainte = txt[:pos]
+        index = inainte.count('\n')
+        if index == 0 and self.w_ana.GetValue():
+            return False                     # anacruza nu are toți timpii
+        oct0 = 4 if c is self.w_dr else 3
+        alt = scriere.TONALITATI[max(0, self.w_ton.GetSelection())][0]
+        r = scriere.timpi_rand(inainte, index, scriere.MASURI[max(0, self.w_masura.GetSelection())], alt, oct0)
+        if not r or r[0] <= 0 or abs(r[0] - r[1]) > 1e-6:
+            return False
+        if '\n' in dupa:
+            c.SetInsertionPoint(pos + len(dupa.split('\n', 1)[0]) + 1)
+        else:
+            c.WriteText('\n')
+        nr = index + 1 if self.w_ana.GetValue() else index + 2
+        voce.spune(_('Măsura {0}', nr), intrerupe=True)
+        return True
+
+    def _scriere_sageata_dreapta(self, c):
+        """La capătul din dreapta al rândului NVDA spune „spațiu gol”; „linie nouă” doar când treci pe rândul următor."""
+        pos = c.GetInsertionPoint()
+        txt = c.GetValue()
+        if pos >= len(txt):
+            return
+        if txt[pos] == '\n':
+            wx.CallLater(60, voce.spune, _('linie nouă'), True)
+        elif pos + 1 == len(txt) or txt[pos + 1] == '\n':
+            wx.CallLater(60, voce.spune, _('spațiu gol'), True)
 
     # ---------------- exerciții de auz ----------------
     def _fila_auz(self):
@@ -2159,6 +2299,19 @@ class Fereastra(wx.Frame):
                 n = self.do_clav + claviatura.TASTE[sc] + self.transpunere
                 return zi(_('nota {0} {1}.', auz.SOLFEGIU[n % 12].lower(), n // 12 - 1))
             return zi(_('nu face nimic în claviatură.'))
+        # fișiere audio
+        if foc in self.p_fisiere.locuri and not (ctrl or alt):
+            for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17), (ord('R'), 0x13)):
+                if sc == sck:
+                    k = kk
+            d = {ord('K'): _('o ia de la capăt.') if shift else _('pune pauză și continuă.'), ord('L'): _('înainte 5 secunde.'),
+                 ord('J'): _('înapoi 5 secunde.'), ord('I'): _('spune minutul și secunda la care ești.'),
+                 ord('R'): _('alege ce se întâmplă la sfârșit: repetă, se oprește sau trece la următoarea.'),
+                 wx.WXK_ESCAPE: _('oprește.'), wx.WXK_UP: _('fișierul de deasupra, se aude imediat.'),
+                 wx.WXK_DOWN: _('fișierul de dedesubt, se aude imediat.'), wx.WXK_RIGHT: _('subfolderul următor.'),
+                 wx.WXK_LEFT: _('subfolderul anterior.'), wx.WXK_SPACE: _('spune numele fișierului și al câtelea e.')}
+            if k in d:
+                return zi(d[k])
         # player
         if pag is self.p_player and not (ctrl or alt or shift):
             d = {ord('K'): _('pornește, pune pauză și continuă.'), wx.WXK_SPACE: _('pornește, pune pauză și continuă.'),
@@ -2171,9 +2324,21 @@ class Fereastra(wx.Frame):
             if k in d:
                 return zi(d[k])
         # scrie o partitură
+        if pag is self.p_scriere:
+            if ctrl and shift and k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                return zi(_('asculți toată partitura.'))
+            if ctrl and not shift and (k == ord('S') or sc == 0x1F):
+                return zi(_('salvezi partitura în Partiturile mele.'))
+            if foc is self.w_tempo or (foc is not None and foc.GetParent() is self.w_tempo):
+                if k in (wx.WXK_PAGEUP, wx.WXK_PAGEDOWN):
+                    return zi(_('tempoul cu 5 mai repede.') if k == wx.WXK_PAGEUP else _('tempoul cu 5 mai rar.'))
+                if k in (wx.WXK_UP, wx.WXK_DOWN):
+                    return zi(_('tempoul cu 1 mai repede.') if k == wx.WXK_UP else _('tempoul cu 1 mai rar.'))
         if foc in (self.w_dr, self.w_st):
             if ctrl and k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 return zi(_('asculți măsura pe care ești, cu ambele mâini.'))
+            if k == wx.WXK_SPACE and not (ctrl or alt or shift):
+                return zi(_('spațiu; când măsura e plină, treci singur pe rândul următor.'))
             if ctrl and k == wx.WXK_F2:
                 return zi(_('spune pe ce măsură ești.'))
             return zi(_('scrii notele în câmp.'))
@@ -2260,6 +2425,10 @@ class Fereastra(wx.Frame):
         if foc is self.t_clav:
             self._clav_apasa(e)
             return
+        if foc in self.p_fisiere.locuri:
+            if not self.p_fisiere.tasta(e, foc):
+                e.Skip()                         # Tab și celelalte merg ca de obicei
+            return
         if self.carte.GetCurrentPage() is self.p_player and foc is not None and self._e_in(foc, self.p_player) \
                 and self.p_player.tasta(e):
             return
@@ -2287,10 +2456,39 @@ class Fereastra(wx.Frame):
                 return
             e.Skip()
             return
+        if self.carte.GetCurrentPage() is self.p_scriere and foc is not None and self._e_in(foc, self.p_scriere):
+            kc = e.GetKeyCode()
+            if e.ControlDown() and not e.AltDown() and not e.ShiftDown() and (kc == ord('S') or
+                                                                             (os.name == 'nt' and e.GetRawKeyCode() == 0x53)):
+                self._salveaza_ciorna(spune=True)            # Control S: salvează partitura (nu textul în cuvinte)
+                return
+            if e.ControlDown() and e.ShiftDown() and kc in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                self.scriere_asculta(False)                    # Control Shift Enter: ascultă tot
+                return
+            if (foc is self.w_tempo or foc.GetParent() is self.w_tempo) and kc in (wx.WXK_PAGEUP, wx.WXK_PAGEDOWN) \
+                    and not e.ControlDown():
+                v = max(0, min(300, self.w_tempo.GetValue() + (5 if kc == wx.WXK_PAGEUP else -5)))
+                self.w_tempo.SetValue(v)
+                self._ciorna_schimbata()
+                voce.spune(str(v), intrerupe=True)
+                return
+            if foc is self.w_instr and not e.AltDown() and not e.ControlDown() and kc in (wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                it = foc.GetSelection()
+                if it.IsOk():
+                    if foc.ItemHasChildren(it):
+                        foc.Collapse(it) if foc.IsExpanded(it) else foc.Expand(it)
+                    else:
+                        self._alege_sunet_scriere(it)
+                return
         if foc in (self.w_dr, self.w_st):
             if e.ControlDown() and e.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 self.scriere_asculta(masura=True)
                 return
+            simplu = not (e.ControlDown() or e.AltDown() or e.ShiftDown())
+            if simplu and e.GetKeyCode() == wx.WXK_SPACE and self._scriere_masura_plina(foc):
+                return
+            if simplu and e.GetKeyCode() == wx.WXK_RIGHT:
+                self._scriere_sageata_dreapta(foc)
             if e.GetKeyCode() == wx.WXK_F2 and e.ControlDown():
                 self.scriere_spune_masura()          # Control F2 (F2 singur e ajutorul la taste)
                 return
@@ -2429,6 +2627,9 @@ class Fereastra(wx.Frame):
         return self.P.titlu if self.P else 'partitura'
 
     def salveaza_cuvinte(self, e=None):
+        if self.carte.GetCurrentPage() is self.p_scriere:
+            self._salveaza_ciorna(spune=True)           # în fila Scrie, Control S salvează partitura la care lucrezi
+            return
         if not self.P or self._interzis_salvare():
             return
         cale = self._cere_salvare(_('Salvează textul în cuvinte'), self._baza() + '.txt', _('Text (*.txt)|*.txt'))
@@ -2582,6 +2783,7 @@ class Fereastra(wx.Frame):
     def la_inchidere(self, e):
         self.redare.opreste()
         self.player_audio.opreste()
+        self.p_fisiere.melodie.opreste()
         self.midi.inchide()
         self.sint.inchide()
         if getattr(self, '_ciorna_amanata', None):
@@ -2940,6 +3142,207 @@ class PaginaPlayer(wx.Panel):
         return False
 
 
+class PaginaFisiere(scrolled.ScrolledPanel):
+    """Fila Fișiere audio. Fiecare folder de sus e un loc la Tab (NVDA spune doar numele lui). Acolo:
+    săgeata stânga/dreapta trece prin folder și subfolderele lui (NVDA spune numele), săgeata jos/sus prin fișiere,
+    fără ca NVDA să spună ceva (fișierul doar se aude, imediat); spațiu spune numele și „2 din 15”."""
+    NUME_MOD = {'urmatoarea': _('La sfârșit trece la următoarea.'), 'repeta': _('La sfârșit repetă piesa.'),
+                'opreste': _('La sfârșit se oprește.')}
+
+    def __init__(self, carte, fereastra):
+        super().__init__(carte)
+        self.f = fereastra
+        self.melodie = fisiere_audio.Melodie()
+        self.melodie.la_sfarsit = lambda: wx.CallAfter(self._sfarsit)
+        self.mod = fereastra.setari.get('mod_audio', 'urmatoarea')
+        if self.mod not in fisiere_audio.MODURI:
+            self.mod = 'urmatoarea'
+        self.s = wx.BoxSizer(wx.VERTICAL)
+        self.zona = wx.BoxSizer(wx.VERTICAL)
+        self.s.Add(self.zona, 0, wx.EXPAND)
+        self.b_folder = wx.Button(self, label=_('Alege folderul...'))
+        self.b_folder.Bind(wx.EVT_BUTTON, lambda e: self.alege())
+        self.s.Add(self.b_folder, 0, wx.ALL, 3)
+        self.t = wx.TextCtrl(self, style=wx.TE_READONLY, name=_('Starea'))
+        self.s.Add(self.t, 0, wx.EXPAND | wx.ALL, 3)
+        self.SetSizer(self.s)
+        self.SetupScrolling(scroll_x=False)
+        self.butoane = []          # câte un buton pentru fiecare folder de sus
+        self.locuri = {}           # buton -> {'foldere': [(nume, cale, fișiere)], 'f': indice folder, 'i': indice fișier}
+        self._amanat = None
+        self._canta_buton = None
+        self.umple(fereastra.setari.get('folder_audio', ''))
+
+    def de_focus(self):
+        return self.butoane[0] if self.butoane else self.b_folder
+
+    # ---- folderele ----
+    def umple(self, folder):
+        self.melodie.opreste()
+        self.zona.Clear()
+        for b in self.butoane:
+            b.Destroy()
+        self.butoane, self.locuri = [], {}
+        self.folder = folder if folder and os.path.isdir(folder) else ''
+        if not self.folder:
+            self.t.SetValue(_('Niciun folder ales. Apasă Alege folderul.'))
+            self.Layout()
+            return
+        dirs, fis = fisiere_audio.continut(self.folder)
+        sus = ([self.folder] if fis else []) + dirs
+        for d in sus:
+            foldere = fisiere_audio.cu_subfoldere(d)
+            b = wx.Button(self, label=os.path.basename(d) or d, name=os.path.basename(d) or d)
+            b.Bind(wx.EVT_BUTTON, lambda e: None)          # spațiul și Enter le prinde fereastra
+            self.zona.Add(b, 0, wx.EXPAND | wx.ALL, 2)
+            b.MoveBeforeInTabOrder(self.b_folder)         # folderele întâi la Tab, apoi Alege folderul
+            self.butoane.append(b)
+            self.locuri[b] = {'foldere': foldere, 'f': 0, 'i': -1}
+        self.t.SetValue(_('Folderul: {0}.', self.folder) + ' ' + self.NUME_MOD[self.mod])
+        self.Layout()
+        self.SetupScrolling(scroll_x=False, scrollToTop=False)
+
+    def alege(self):
+        dlg = wx.DirDialog(self, _('Alege folderul cu fișiere audio'), self.folder or os.path.expanduser('~'))
+        if dlg.ShowModal() == wx.ID_OK:
+            self.f.setari['folder_audio'] = dlg.GetPath()
+            scrie_setari(self.f.setari)
+            self.umple(dlg.GetPath())
+            self.de_focus().SetFocus()
+        dlg.Destroy()
+
+    def _loc(self, b):
+        loc = self.locuri[b]
+        nume, cale, fisiere = loc['foldere'][loc['f']]
+        return loc, nume, fisiere
+
+    # ---- sunetul ----
+    def _canta(self, b):
+        self._amanat = None
+        loc, _n, fisiere = self._loc(b)
+        if not (0 <= loc['i'] < len(fisiere)):
+            return
+        cale = fisiere[loc['i']]
+        self.f.redare.opreste()                         # dacă se cânta ceva din fila 1
+        if self.f.player_audio.stare == 'canta':
+            self.f.player_audio.pauza_continua()
+        try:
+            self.melodie.deschide_si_canta(cale)
+            self._canta_buton = b
+            self.t.SetValue(os.path.basename(cale))
+        except Exception as ex:
+            self.t.SetValue(_('Fișierul nu se poate cânta: {0}', ex))
+            voce.spune(_('Nu se poate cânta.'), intrerupe=True)
+
+    def _muta(self, b, pas):
+        loc, _n, fisiere = self._loc(b)
+        if not fisiere:
+            voce.spune(_('Niciun fișier audio aici.'), intrerupe=True)
+            return
+        nou = loc['i'] + pas if loc['i'] >= 0 else (0 if pas > 0 else len(fisiere) - 1)
+        if not (0 <= nou < len(fisiere)):
+            return                                       # la capăt: rămâne unde e, fără să spună nimic
+        loc['i'] = nou
+        if self._amanat:
+            self._amanat.Stop()
+        self._amanat = wx.CallLater(90, self._canta, b)   # la săgeata ținută apăsată nu pornește fiecare
+
+    def _spune(self, b):
+        loc, nume, fisiere = self._loc(b)
+        if 0 <= loc['i'] < len(fisiere):
+            n = os.path.splitext(os.path.basename(fisiere[loc['i']]))[0]
+            voce.spune(_('{0}, {1} din {2}', n, loc['i'] + 1, len(fisiere)), intrerupe=True)
+        else:
+            voce.spune(_('{0}: {1} fișiere.', nume, len(fisiere)), intrerupe=True)
+
+    def _schimba_folder(self, b, pas):
+        loc = self.locuri[b]
+        n = len(loc['foldere'])
+        loc['f'] = (loc['f'] + pas) % n
+        loc['i'] = -1
+        _l, nume, fisiere = self._loc(b)
+        b.SetLabel(nume)
+        voce.spune(nume, intrerupe=True)
+
+    def _sfarsit(self):
+        b = self._canta_buton
+        if b is None or b not in self.locuri:
+            return
+        if self.mod == 'repeta':
+            try:
+                self.melodie.de_la_capat()
+            except Exception:
+                pass
+        elif self.mod == 'urmatoarea':
+            loc, _n, fisiere = self._loc(b)
+            if loc['i'] + 1 < len(fisiere):
+                loc['i'] += 1
+                self._canta(b)
+
+    def tasta(self, e, b):
+        """Tastele pe un folder; întoarce True dacă a folosit tasta."""
+        if e.ControlDown() or e.AltDown():
+            return False
+        k = e.GetKeyCode()
+        sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+        m = self.melodie
+        try:
+            if k in (wx.WXK_DOWN, wx.WXK_UP) and not e.ShiftDown():
+                self._muta(b, 1 if k == wx.WXK_DOWN else -1)
+                return True
+            if k in (wx.WXK_LEFT, wx.WXK_RIGHT) and not e.ShiftDown():
+                self._schimba_folder(b, 1 if k == wx.WXK_RIGHT else -1)
+                return True
+            if k == wx.WXK_SPACE and not e.ShiftDown():
+                self._spune(b)
+                return True
+            if k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+                return True                              # Enter nu „apasă” butonul
+            if k == ord('K') or sc == 0x25:
+                if e.ShiftDown():
+                    if m.cale:
+                        m.de_la_capat()
+                    else:
+                        self._canta(b)
+                elif m.stare == 'oprit':
+                    loc, _n, fisiere = self._loc(b)
+                    if loc['i'] < 0 and fisiere:
+                        loc['i'] = 0
+                    self._canta(b)
+                else:
+                    m.pauza_continua()
+                return True
+            if e.ShiftDown():
+                return False
+            if k in (ord('L'), ord('J')) or sc in (0x26, 0x24):
+                if m.stare != 'oprit':
+                    inainte = k == ord('L') or sc == 0x26
+                    lung = m.lungime()
+                    nou = m.pozitie() + (5000 if inainte else -5000)
+                    m.sari(max(0, min(nou, max(0, lung - 200))))
+                return True
+            if k == ord('I') or sc == 0x17:
+                t = PaginaPlayer._timp
+                voce.spune(_('{0} din {1}', t(m.pozitie()), t(m.lungime())) if m.stare != 'oprit' else _('Nu se cântă nimic.'),
+                           intrerupe=True)
+                return True
+            if k == ord('R') or sc == 0x13:
+                ordine = ['repeta', 'opreste', 'urmatoarea']
+                self.mod = ordine[(ordine.index(self.mod) + 1) % 3] if self.mod in ordine else 'urmatoarea'
+                self.f.setari['mod_audio'] = self.mod
+                scrie_setari(self.f.setari)
+                voce.spune(self.NUME_MOD[self.mod], intrerupe=True)
+                return True
+            if k == wx.WXK_ESCAPE and m.stare != 'oprit':
+                m.opreste()
+                voce.spune(_('Oprit.'), intrerupe=True)
+                return True
+        except Exception as ex:
+            self.t.SetValue(str(ex))
+            return True
+        return False
+
+
 class DialogProgres(wx.Dialog):
     """Fereastră cu progresul actualizării: un text citibil și o bară de progres."""
     def __init__(self, parinte, titlu, text):
@@ -3003,6 +3406,9 @@ def autotest(fisier, iesire):
         rez.append(f'AUZ ABSOLUT {_ap.incheie(_r, 1)} test {len(_ap.runda_test().incercari)} note')
         rez.append(f'AUZ DURATE {len(_ed.durate)} sunete, {len(_ed.pasi)} pasi, citit {auz.citeste_durate("2, 1/2")}, raspuns: {_sd.raspunde_text(", ".join(str(b) for b in _ed.durate))[0]}')
         rez.append('SCRIERE LITERE ' + str(len(scriere.construieste('c4p d e f\nbb4d c#5d', '')[0].parts[0].recurse().notes)))
+        _sv, _pv = scriere.construieste('do4 p re mi fa', '', versuri='Ma-mă dra-gă')
+        rez.append(f'VERSURI {[ly.text for n in _sv.recurse().notes for ly in n.lyrics]} TIMPI {scriere.timpi_rand("do4 s re mi fa sol la si do5 do si4 la sol fa mi re do", 0)}')
+        rez.append(f'PARTITURILE MELE {len(f._ids)} fisiere, curenta {f._curenta}; FOLDERE AUDIO {len(f.p_fisiere.butoane)}')
         try:
             sf = sunete.SintetizatorFluid()
             sf.pregateste(cu_sunet=False)
