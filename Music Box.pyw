@@ -244,7 +244,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control End)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are patru subfile: În cuvinte, Braille, Player și Metronom; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Metronom (a patra subfilă din Partituri): un metronom de sine stătător. K sau spațiu îl pornesc și îl opresc; săgeata sus și jos schimbă tempoul cu 1, Page Up și Page Down cu 5; săgeata dreapta și stânga schimbă câți timpi are măsura (primul timp se aude mai tare); Home și End volumul; I spune tempoul, timpii și volumul.') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are patru subfile: În cuvinte, Braille, Player și Metronom; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Metronom (a patra subfilă din Partituri): un metronom de sine stătător. K sau spațiu îl pornesc și îl opresc; săgeata sus și jos schimbă tempoul cu 1, Page Up și Page Down cu 5; săgeata dreapta și stânga schimbă câți timpi are măsura (primul timp se aude mai tare); Home și End volumul; I spune tempoul, timpii și volumul.') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -721,6 +721,8 @@ class Fereastra(wx.Frame):
         if self._pagina() is self.p_braille:
             self.actualizeaza_braille()
         voce.spune(self.lista.GetString(nou), intrerupe=True)
+        if self.redare.stare == 'canta':
+            self.reda(False)             # se cânta: cântă de acum măsura nouă (cerut de Răzvan)
 
     def mergi_la(self, e=None):
         if not self.P:
@@ -2391,8 +2393,9 @@ class Fereastra(wx.Frame):
             d = {ord('K'): _('pornește, pune pauză și continuă.'), wx.WXK_SPACE: _('pornește, pune pauză și continuă.'),
                  ord('L'): _('înainte 5 secunde.'), ord('J'): _('înapoi 5 secunde.'),
                  ord('I'): _('spune minutul și secunda la care ești și măsura.'), wx.WXK_HOME: _('de la început.'),
+                 ord('M'): _('ce auzi: ambele mâini, doar dreapta sau doar stânga.'),
                  wx.WXK_ESCAPE: _('oprește.'), wx.WXK_TAB: _('rămâi în player.')}
-            for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17)):
+            for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17), (ord('M'), 0x32)):
                 if sc == sck:
                     k = kk
             if k in d:
@@ -3110,6 +3113,12 @@ class PaginaPlayer(wx.Panel):
             ms_batai = redare.milisecunde(date, [q for q, _p in batai]) if batai else []
             momente = list(zip(ms_batai, [p for _q, p in batai]))
             harta = list(zip(redare.milisecunde(date, [q for q, _n in masuri]), [n for _q, n in masuri])) if masuri else []
+            # fiecare mână (portativ) separat, ca să poți asculta doar una (tasta M)
+            pe_maini = []
+            if len(cheie[3]) > 1:
+                for i in cheie[3]:
+                    pe_maini.append(self.f._midi_pentru((cheie[0], cheie[1], cheie[2], (i,)))[0])
+                self.f._midi_pentru(cheie)            # cache-ul rămâne la piesa întreagă
         except Exception as ex:
             traceback.print_exc()
             self._inreg['eroare'] = str(ex)
@@ -3120,29 +3129,40 @@ class PaginaPlayer(wx.Panel):
 
         def lucru():
             try:
-                sunet = inregistrare.randeaza(date, progres, oprit=lambda: self._inreg.get('cheie') != cheie)
+                oprit = lambda: self._inreg.get('cheie') != cheie
+                piste = []
+                if pe_maini:
+                    for k, d in enumerate(pe_maini):
+                        x = inregistrare.randeaza(d, lambda q, k=k: progres(int((k * 100 + q) / len(pe_maini))), oprit=oprit,
+                                                  normalizeaza=False)
+                        if x is None:
+                            return
+                        piste.append(x)
+                    sunet, piste = inregistrare.pe_maini(piste)
+                else:
+                    sunet = inregistrare.randeaza(date, progres, oprit=oprit)
                 met = inregistrare.pista_metronom(len(sunet), momente) if sunet is not None else None
-                wx.CallAfter(self._gata, cheie, sunet, met, harta, None)
+                wx.CallAfter(self._gata, cheie, sunet, met, harta, None, piste)
             except Exception as ex:
                 traceback.print_exc()
-                wx.CallAfter(self._gata, cheie, None, None, harta, str(ex))
+                wx.CallAfter(self._gata, cheie, None, None, harta, str(ex), [])
         threading.Thread(target=lucru, daemon=True).start()
 
-    def _gata(self, cheie, sunet, met, harta, eroare):
+    def _gata(self, cheie, sunet, met, harta, eroare, piste=()):
         if self._inreg.get('cheie') != cheie:
             return
         if eroare or sunet is None:
             self._inreg['eroare'] = eroare or ''
             return
         pa = self.f.player_audio
-        pa.incarca(sunet, met)
+        pa.incarca(sunet, met, list(piste))
         pa.la_sfarsit = lambda: setattr(self, '_terminat', True)
         self._harta_audio = harta
         self._inreg['gata'] = True
         self.aplica()
         if self._porneste_dupa:
             self._porneste_dupa = False
-            if self.f.carte.GetCurrentPage() is self:
+            if self.f._pagina() is self:
                 self.f.redare.opreste()
                 pa.canta(0)
 
@@ -3167,8 +3187,8 @@ class PaginaPlayer(wx.Panel):
     def _tasta_audio(self, k, sc):
         pa = self.f.player_audio
         inreg = getattr(self, '_inreg', None) or {}
-        taste_player = k in (ord('K'), ord('J'), ord('L'), ord('I'), wx.WXK_SPACE, wx.WXK_HOME, wx.WXK_ESCAPE) or \
-            sc in (0x25, 0x24, 0x26, 0x17)
+        taste_player = k in (ord('K'), ord('J'), ord('L'), ord('I'), ord('M'), wx.WXK_SPACE, wx.WXK_HOME, wx.WXK_ESCAPE) or \
+            sc in (0x25, 0x24, 0x26, 0x17, 0x32)
         if not taste_player:
             return False
         if k == wx.WXK_ESCAPE:
@@ -3192,6 +3212,19 @@ class PaginaPlayer(wx.Panel):
             return True
         self.f.redare.opreste()                    # dacă se cânta ceva din fila 1
         self.aplica()
+        if k == ord('M') or sc == 0x32:
+            # M: ce se aude — toate mâinile, apoi fiecare mână (portativ) pe rând
+            if not pa.piste:
+                voce.spune(_('Partitura are un singur portativ.'), intrerupe=True)
+                return True
+            pa.alese = 0 if pa.alese is None else (pa.alese + 1 if pa.alese + 1 < len(pa.piste) else None)
+            P = self.f.P
+            if pa.alese is None:
+                text = _('Ambele mâini.') if len(pa.piste) == 2 else _('Toate portativele.')
+            else:
+                text = (P.portative[pa.alese].nume if P and pa.alese < len(P.portative) else str(pa.alese + 1)) + '.'
+            voce.spune(text, intrerupe=True)
+            return True
         if k == ord('K') or sc == 0x25 or k == wx.WXK_SPACE:
             if pa.stare == 'oprit':
                 self._terminat = False
