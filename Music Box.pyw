@@ -246,7 +246,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control End)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are patru subfile: În cuvinte, Braille, Player și Metronom; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Metronom (a patra subfilă din Partituri): un metronom de sine stătător. K sau spațiu îl pornesc și îl opresc; Shift 1 îl dă mai rar și Shift 2 mai repede, cu câte 5, iar Control Shift 1 și Control Shift 2 cu câte 1; săgeata dreapta și stânga schimbă câți timpi are măsura (primul timp se aude mai tare); Home și End volumul; I spune tempoul, timpii și volumul.') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are patru subfile: În cuvinte, Braille, Player și Metronom; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Metronom (a patra subfilă din Partituri): un metronom de sine stătător. K sau spațiu îl pornesc și îl opresc; Shift 1 îl dă mai rar și Shift 2 mai repede, cu câte 5, iar Control Shift 1 și Control Shift 2 cu câte 1; săgeata dreapta și stânga aleg măsura (2 pe 4, 3 pe 4, 4 pe 4, 5 pe 4, 6 pe 8 și altele; primul timp se aude mai tare și metronomul începe mereu cu el); Home și End volumul; I spune tempoul, măsura și volumul.') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -2429,8 +2429,8 @@ class Fereastra(wx.Frame):
         # metronomul
         if pag is self.p_metronom and not (ctrl or alt):
             d = {ord('K'): _('pornește sau oprește metronomul.'), wx.WXK_SPACE: _('pornește sau oprește metronomul.'),
-                 wx.WXK_RIGHT: _('un timp în plus în măsură.'), wx.WXK_LEFT: _('un timp în minus în măsură.'),
-                 ord('I'): _('spune tempoul, timpii și volumul.'), wx.WXK_HOME: _('volumul mai tare cu 10 la sută.'),
+                 wx.WXK_RIGHT: _('măsura următoare: 2 pe 4, 3 pe 4, 4 pe 4 și celelalte.'), wx.WXK_LEFT: _('măsura anterioară.'),
+                 ord('I'): _('spune tempoul, măsura și volumul.'), wx.WXK_HOME: _('volumul mai tare cu 10 la sută.'),
                  wx.WXK_END: _('volumul mai încet cu 10 la sută.'), wx.WXK_TAB: _('rămâi în metronom.')}
             if shift and sc == 0x02:
                 return zi(_('mai rar cu 5 bătăi pe minut.'))
@@ -3554,71 +3554,102 @@ class PaginaFisiere(scrolled.ScrolledPanel):
 
 class PaginaMetronom(wx.Panel):
     """Subfila Metronom din Partituri: un metronom de sine stătător (nu ține de partitură).
-    K sau spațiu îl pornesc și îl opresc; săgeata dreapta/stânga
-    câți timpi are măsura (primul timp se aude mai tare); Home/End volumul; I spune tot.
-    Tempoul: Shift 1 / Shift 2 cu câte 5, Control Shift 1 / Control Shift 2 cu câte 1."""
+    K sau spațiu îl pornesc și îl opresc; săgeata dreapta/stânga alege măsura (2/4, 3/4, 4/4...);
+    Home/End volumul; I spune tot. Tempoul: Shift 1 / Shift 2 cu câte 5, Control Shift 1 / 2 cu câte 1.
+    Bătăile se trimit direct la sintetizatorul Windows (aceleași note ca metronomul de la partituri),
+    dintr-un fir care le ține timpul: pornește și se oprește pe loc, tempoul se schimbă de la bătaia următoare,
+    iar prima bătaie e mereu cea accentuată."""
+    MASURI = ['2/4', '3/4', '4/4', '5/4', '6/8', '7/8', '9/8', '12/8']
 
     def __init__(self, carte, fereastra):
         super().__init__(carte)
         self.f = fereastra
         d = fereastra.setari.get('metronom_singur', {})
         self.tempo = int(d.get('tempo', 80))
-        self.timpi = int(d.get('timpi', 4))
+        m = d.get('masura')
+        if m not in self.MASURI:
+            m = {2: '2/4', 3: '3/4', 5: '5/4', 6: '6/8', 7: '7/8', 9: '9/8', 12: '12/8'}.get(int(d.get('timpi', 4)), '4/4')
+        self.masura = m
         self.volum = int(d.get('volum', 70))
         self.merge = False
-        self._amanat = None
-        self._fisier = None
+        self._gen = 0
+        self._sint = None
+        self._reia = False
         s = wx.BoxSizer(wx.VERTICAL)
         self.t = wx.TextCtrl(self, style=wx.TE_READONLY, name='')
         s.Add(self.t, 0, wx.EXPAND | wx.ALL, 2)
         self.SetSizer(s)
         self._scrie_text()
 
+    @property
+    def timpi(self):
+        return int(self.masura.split('/')[0])
+
+    def _masura_spusa(self):
+        sus, jos = self.masura.split('/')
+        return _('{0} pe {1}', sus, jos)
+
     def _text(self):
-        return _('Metronom {0}. {1} bătăi pe minut, {2} timpi în măsură, volum {3} la sută.',
-                 _('pornit') if self.merge else _('oprit'), self.tempo, self.timpi, self.volum)
+        return _('Metronom {0}. {1} bătăi pe minut, măsura {2}, volum {3} la sută.',
+                 _('pornit') if self.merge else _('oprit'), self.tempo, self._masura_spusa(), self.volum)
 
     def _scrie_text(self):
         self.t.SetValue(self._text())
 
     def _salveaza(self):
-        self.f.setari['metronom_singur'] = {'tempo': self.tempo, 'timpi': self.timpi, 'volum': self.volum}
+        self.f.setari['metronom_singur'] = {'tempo': self.tempo, 'masura': self.masura, 'volum': self.volum}
         scrie_setari(self.f.setari)
 
-    def _midi(self):
-        """Bătăile metronomului ca fișier MIDI, cu același sunet ca metronomul de la partituri
-        (wood block pe canalul de percuție, primul timp mai tare). Ține vreo 20 de minute și se reia în buclă."""
-        div = 480
-        us = int(round(60000000 / self.tempo))
-        vel = max(1, min(127, round(127 * self.volum / 100)))
-        accent = min(127, vel + 12)
-        scurt = div // 8
-        masuri = max(1, int(20 * self.tempo / self.timpi))
-        ev = [(0, b'\xff\x51\x03' + us.to_bytes(3, 'big')), (0, bytes([0xB9, 7, 127])), (0, bytes([0xB9, 11, 127]))]
-        for b in range(masuri * self.timpi):
-            prima = b % self.timpi == 0
-            nota = redare.NOTA_ACCENT if prima else redare.NOTA_BATAIE
-            ev.append((b * div, bytes([0x99, nota, accent if prima else vel])))
-            ev.append((b * div + scurt, bytes([0x89, nota, 0])))
-        ev.append((masuri * self.timpi * div, b'\xff\x2f\x00'))     # bucla se reia exact pe primul timp
-        return redare.scrie_temporar(redare._scrie(0, div, [ev]))
+    def _bate(self, gen, sint):
+        """Firul metronomului: o bătaie la fiecare 60/tempo secunde, prima din măsură mai tare."""
+        try:
+            urm = time.perf_counter() + 0.06          # o clipă, ca sintetizatorul să fie gata pentru prima bătaie
+            k = 0
+            self._reia = False
+            nota_veche = None
+            while gen == self._gen:
+                if self._reia:                         # s-a schimbat tempoul sau măsura: o ia de la 1, accentuat
+                    self._reia = False
+                    k = 0
+                    urm = time.perf_counter() + 0.03
+                ramas = urm - time.perf_counter()
+                if ramas > 0.003:
+                    time.sleep(min(ramas - 0.002, 0.02))
+                    continue
+                while time.perf_counter() < urm:
+                    pass
+                if gen != self._gen:
+                    break
+                prima = k % self.timpi == 0
+                vel = max(1, min(127, round(127 * self.volum / 100)))
+                nota = redare.NOTA_ACCENT if prima else redare.NOTA_BATAIE
+                if nota_veche is not None:
+                    sint._msg(0x89, nota_veche, 0)
+                sint._msg(0x99, nota, min(127, vel + 12) if prima else vel)
+                nota_veche = nota
+                k += 1
+                urm += 60.0 / self.tempo               # tempoul nou se aude de la bătaia următoare
+        finally:
+            try:
+                sint.inchide()
+            except Exception:
+                pass
 
     def _canta(self):
         f = self.f
         try:
+            if f.redare.stare != 'oprit':
+                f.redare.opreste()
             if f.player_audio.stare == 'canta':
                 f.player_audio.pauza_continua()
             if f.p_fisiere.melodie.stare == 'canta':
                 f.p_fisiere.melodie.pauza_continua()
             f.sint.elibereaza()
-            f._redat = None                    # redarea nu mai e a partiturii
-            f.redare.bucla = True
-            cale = self._midi()
-            try:
-                f.redare.canta(cale)
-            except Exception:
-                time.sleep(0.15)                 # sintetizatorul Windows abia s-a eliberat: încă o dată
-                f.redare.canta(cale)
+            sint = claviatura.Sintetizator()
+            sint.deschide()
+            self._gen += 1
+            self._fir = threading.Thread(target=self._bate, args=(self._gen, sint), daemon=True)
+            self._fir.start()
         except Exception as ex:
             self.merge = False
             self.t.SetValue(str(ex))
@@ -3633,28 +3664,23 @@ class PaginaMetronom(wx.Panel):
         if not self.merge:
             return
         self.merge = False
-        if self._amanat:
-            self._amanat.Stop()
-        try:
-            self.f.redare.opreste()
-            self.f.redare.bucla = self.f.m_bucla.IsChecked()
-        except Exception:
-            pass
+        self._gen += 1                                 # firul se oprește singur, sintetizatorul se închide
+        fir = getattr(self, '_fir', None)
+        if fir is not None and fir.is_alive():
+            fir.join(0.3)                              # ca sintetizatorul să fie liber pentru redarea piesei
         self._scrie_text()
 
     def _tempo(self, pas):
         self.tempo = max(20, min(300, self.tempo + pas))
+        self._reia = True
         self._schimbat(_('{0} bătăi pe minut.', self.tempo))
 
     def _schimbat(self, spus):
-        """Tempoul, timpii sau volumul s-au schimbat: NVDA spune valoarea, iar sunetul se schimbă după o clipă."""
+        """Tempoul, măsura sau volumul s-au schimbat: NVDA spune valoarea. La tempo și măsură metronomul
+        o ia imediat de la capăt, de la bătaia accentuată (1 2 3, 1 2 3...); volumul se schimbă din mers."""
         self._salveaza()
         self._scrie_text()
         voce.spune(spus, intrerupe=True)
-        if self.merge:
-            if self._amanat:
-                self._amanat.Stop()
-            self._amanat = wx.CallLater(250, self._canta)
 
     def tasta(self, e):
         k = e.GetKeyCode()
@@ -3694,8 +3720,10 @@ class PaginaMetronom(wx.Panel):
             voce.spune(self._text(), intrerupe=True)
             return True
         if k in (wx.WXK_RIGHT, wx.WXK_LEFT):
-            self.timpi = max(1, min(12, self.timpi + (1 if k == wx.WXK_RIGHT else -1)))
-            self._schimbat(_('{0} timpi.', self.timpi))
+            i = self.MASURI.index(self.masura) + (1 if k == wx.WXK_RIGHT else -1)
+            self.masura = self.MASURI[max(0, min(len(self.MASURI) - 1, i))]
+            self._reia = True
+            self._schimbat(_('Măsura de {0}.', self._masura_spusa()))
             return True
         if k in (wx.WXK_HOME, wx.WXK_END):
             self.volum = max(10, min(100, self.volum + (10 if k == wx.WXK_HOME else -10)))
@@ -3783,7 +3811,18 @@ def autotest(fisier, iesire):
         except Exception as ex:
             rez.append(f'DIN BRAILLE eroare: {ex}')
         try:
-            rez.append(f'METRONOM SINGUR {os.path.getsize(f.p_metronom._wav())} octeti, subfile {f.carte_p.GetPageCount()}')
+            class _SintProba:
+                def __init__(self): self.batai = []
+                def _msg(self, st, a, b=0):
+                    if st == 0x99: self.batai.append(a)
+                def inchide(self): pass
+            _pm = f.p_metronom
+            _sp = _SintProba()
+            _pm.tempo, _pm.masura = 300, '3/4'
+            _pm._gen += 1
+            _fir = threading.Thread(target=_pm._bate, args=(_pm._gen, _sp), daemon=True)
+            _fir.start(); time.sleep(0.75); _pm._gen += 1; _fir.join(1)
+            rez.append(f'METRONOM SINGUR batai {len(_sp.batai)}, prima accentuata {bool(_sp.batai) and _sp.batai[0] == redare.NOTA_ACCENT}, subfile {f.carte_p.GetPageCount()}')
         except Exception as ex:
             rez.append(f'METRONOM SINGUR eroare: {ex}')
         rez.append(f'PARTITURILE MELE {len(f._ids)} fisiere, curenta {f._curenta}; FOLDERE AUDIO {len(f.p_fisiere.butoane)}')
