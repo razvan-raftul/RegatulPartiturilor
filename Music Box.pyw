@@ -17,6 +17,7 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
+import numpy as np  # noqa: E402
 import wx  # noqa: E402
 import wx.lib.scrolledpanel as scrolled  # noqa: E402
 
@@ -3625,6 +3626,7 @@ class MetronomSingur:
         self.merge = False
         self._gen = 0
         self._fir = None
+        self._lov = None
 
     def _bate(self, gen, sint):
         try:
@@ -3649,9 +3651,6 @@ class MetronomSingur:
                     sint._msg(0x89, nota_veche, 0)
                 if vel > 0 and v > 0:
                     sint._msg(0x99, nota, min(127, vel + 12) if prima else vel)
-                    dublu = redare.vel_dublura(v, prima)      # peste 100 la sută: aceeași lovitură încă o dată, deodată
-                    if dublu:
-                        sint._msg(0x99, nota, dublu)
                 nota_veche = nota
                 k += 1
                 urm += self.f.secunde_bataie()
@@ -3661,6 +3660,54 @@ class MetronomSingur:
             except Exception:
                 pass
 
+    # ---- prin placa de sunet: aceleași wood block-uri, dar volumul poate trece de 100 la sută ----
+    def _lovituri(self):
+        if self._lov is None:
+            self._lov = inregistrare.lovituri_metronom((redare.NOTA_ACCENT, redare.NOTA_BATAIE))
+        return self._lov
+
+    def _bate_audio(self, gen, iesire, lov):
+        """Un flux continuu de sunet în care loviturile sunt puse exact la cadrul lor (fără întârzieri de la sistem).
+        Coada plăcii de sunet e de 4 × 512 cadre (~46 ms): tempoul, măsura și volumul se aud de la bătaia următoare."""
+        hop, nr = 512, 4
+        RATA = inregistrare.RATA
+        try:
+            cadru, urm, k, i = 0, int(0.02 * RATA), 0, 0
+            active = []                                  # [sunet, de unde începe în blocul de acum]
+            cache = {}
+            while gen == self._gen:
+                if not iesire.liber(i):
+                    time.sleep(0.002)
+                    continue
+                bloc = np.zeros(hop, np.float32)
+                while urm < cadru + hop:
+                    timpi = max(1, self.f.masura_metronom()[0])
+                    prima = k % timpi == 0
+                    v = self.f.volum_metronom
+                    if v > 0:
+                        cheie = (prima, v)
+                        if cheie not in cache:
+                            cache.clear() if len(cache) > 8 else None
+                            cache[cheie] = inregistrare.la_volum(lov[redare.NOTA_ACCENT if prima else redare.NOTA_BATAIE], v)
+                        active.append([cache[cheie], urm - cadru])
+                    k += 1
+                    urm += max(1, int(round(self.f.secunde_bataie() * RATA)))
+                ramase = []
+                for sn, off in active:
+                    a, din = max(0, off), max(0, -off)
+                    n = min(hop - a, len(sn) - din)
+                    if n > 0:
+                        bloc[a:a + n] += sn[din:din + n]
+                    if din + (hop - a) < len(sn):
+                        ramase.append([sn, off - hop])
+                active = ramase
+                y = (np.clip(bloc, -1.0, 1.0) * 32767).astype(np.int16)
+                iesire.scrie(i, np.repeat(y[:, None], 2, axis=1).tobytes())
+                i = (i + 1) % nr
+                cadru += hop
+        finally:
+            iesire.inchide()
+
     def porneste(self, sint=None):
         if self.merge:
             return
@@ -3669,6 +3716,17 @@ class MetronomSingur:
             if f.p_fisiere.melodie.stare == 'canta':
                 f.p_fisiere.melodie.pauza_continua()
             if sint is None:
+                try:
+                    lov = self._lovituri()
+                    iesire = inregistrare.IesireWaveOut(hop=512, nr=4)
+                except Exception:
+                    traceback.print_exc()           # fără FluidSynth sau fără placă de sunet: ca înainte, prin MIDI
+                else:
+                    self._gen += 1
+                    self.merge = True
+                    self._fir = threading.Thread(target=self._bate_audio, args=(self._gen, iesire, lov), daemon=True)
+                    self._fir.start()
+                    return
                 f.sint.elibereaza()
                 sint = claviatura.Sintetizator()
                 sint.deschide()
@@ -3775,6 +3833,14 @@ def autotest(fisier, iesire):
             f.procent = 300.0                     # 300 de bătăi pe minut, fără partitură
             f.metro.porneste(_sp); time.sleep(0.75); f.metro.opreste()
             f.P = _p_vechi
+            try:
+                _lv = inregistrare.lovituri_metronom((redare.NOTA_ACCENT, redare.NOTA_BATAIE))
+                _x = _lv[redare.NOTA_ACCENT]
+                _r100 = float(np.sqrt(np.mean(inregistrare.la_volum(_x, 100) ** 2)))
+                _r200 = float(np.sqrt(np.mean(inregistrare.la_volum(_x, 200) ** 2)))
+                rez.append(f'METRONOM AUDIO lovituri {len(_lv)}, lungime {len(_x)}, mai tare la 200: {_r200 / _r100:.2f} ori')
+            except Exception as ex:
+                rez.append(f'METRONOM AUDIO eroare: {ex}')
             rez.append(f'METRONOM SINGUR batai {len(_sp.batai)}, prima accentuata {bool(_sp.batai) and _sp.batai[0] == redare.NOTA_ACCENT}, a patra accentuata {len(_sp.batai) > 3 and _sp.batai[3] == redare.NOTA_ACCENT}, subfile {f.carte_p.GetPageCount()}')
         except Exception as ex:
             rez.append(f'METRONOM SINGUR eroare: {ex}')
