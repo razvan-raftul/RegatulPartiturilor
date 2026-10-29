@@ -355,7 +355,7 @@ class Fereastra(wx.Frame):
         self.s_metronom = wx.CheckBox(ps, label=_('Metronom pornit (cântă odată cu piesa, în tempoul ei)'))
         ss.Add(self.s_metronom, 0, wx.ALL, 6)
         ss.Add(wx.StaticText(ps, label=_('Volumul metronomului, în procente (0 – 100)')), 0, wx.LEFT | wx.TOP, 6)
-        self.s_volum = wx.SpinCtrl(ps, min=0, max=100, initial=60, name=_('Volumul metronomului, în procente'))
+        self.s_volum = wx.SpinCtrl(ps, min=0, max=VOLUM_METRONOM_MAX, initial=60, name=_('Volumul metronomului, în procente'))
         ss.Add(self.s_volum, 0, wx.ALL, 6)
         ss.Add(wx.StaticText(ps, label=_('Instrumentul claviaturii')), 0, wx.LEFT | wx.TOP, 6)
         # arbore: categoriile sunt „foldere”; spațiu le deschide și le închide, spațiu sau Enter pe un instrument îl alege
@@ -700,7 +700,8 @@ class Fereastra(wx.Frame):
     def _arata_stanga(self):
         """Lista de măsuri, portativele și opțiunile se văd (și se ajunge la ele cu Tab) doar în Partituri,
         la În cuvinte și Braille; în celelalte file nu încurcă (cerut de Răzvan)."""
-        vede = self._pagina() in (self.p_cuvinte, self.p_braille)
+        # fără partitură deschisă nu au rost (portativele, octava, digitația...): nu se văd deloc (cerut de Răzvan)
+        vede = self._pagina() in (self.p_cuvinte, self.p_braille) and self.P is not None
         if self._sz_tot.IsShown(self._sz_stanga) != vede:
             self._sz_tot.Show(self._sz_stanga, vede, recursive=True)
             self._panou.Layout()
@@ -723,6 +724,9 @@ class Fereastra(wx.Frame):
         {0: self.p_fisiere.de_focus(), 1: self.t_clav, 3: self.w_lista, 4: self.a_ex, 5: self.s_limba}[pagina].SetFocus()
 
     def _la_lista(self):
+        if self.P is None:
+            voce.spune(_('Deschide întâi o partitură.'), intrerupe=True)
+            return
         if self._pagina() not in (self.p_cuvinte, self.p_braille):
             self.arata_sub(0)
         self._arata_stanga()
@@ -878,6 +882,8 @@ class Fereastra(wx.Frame):
         """K: dacă nu se cântă nimic, redă selecția; altfel oprește sau continuă de unde a rămas.
         Dacă între timp ai ales altă măsură, K o ia de la capăt, de la măsura aleasă (cerut de Răzvan)."""
         if self.metro.merge:                      # metronomul bate singur: K pornește piesa (cu metronomul ei)
+            if self.P is None:
+                return                            # fără partitură K nu oprește metronomul (cerut de Răzvan)
             self.metro.opreste()
             self.reda(False)
             return
@@ -994,7 +1000,7 @@ class Fereastra(wx.Frame):
 
     def schimba_volum_metronom(self, pas):
         vechi = self.volum_metronom
-        self.volum_metronom = min(100, max(0, self.volum_metronom + pas))
+        self.volum_metronom = min(VOLUM_METRONOM_MAX, max(0, self.volum_metronom + pas))
         if self.volum_metronom == vechi:
             text = (_('Metronomul e deja cel mai tare, {0} la sută.', self.volum_metronom) if pas > 0 else
                     _('Metronomul e deja cel mai încet, {0} la sută.', self.volum_metronom))
@@ -1029,6 +1035,7 @@ class Fereastra(wx.Frame):
         self.s_masura.Show(fara)
         self.m_masura.Enable(fara)
         self.p_partituri.Layout()
+        self._arata_stanga()
 
     def _sincronizeaza_setari(self):
         """Fila Setări arată mereu ce e acum (și după scurtături)."""
@@ -3602,6 +3609,7 @@ class PaginaFisiere(scrolled.ScrolledPanel):
         return False
 
 
+VOLUM_METRONOM_MAX = 200    # peste 100 la sută lovitura se dublează (mai tare, același sunet)
 MASURI_METRONOM = ['2/4', '3/4', '4/4', '5/4', '6/8', '7/8', '9/8', '12/8']
 
 
@@ -3634,12 +3642,16 @@ class MetronomSingur:
                     break
                 timpi = max(1, self.f.masura_metronom()[0])
                 prima = k % timpi == 0
-                vel = max(1, min(127, round(127 * self.f.volum_metronom / 100)))
+                v = self.f.volum_metronom
+                vel = max(1, min(127, round(127 * v / 100)))
                 nota = redare.NOTA_ACCENT if prima else redare.NOTA_BATAIE
                 if nota_veche is not None:
                     sint._msg(0x89, nota_veche, 0)
-                if vel > 0 and self.f.volum_metronom > 0:
+                if vel > 0 and v > 0:
                     sint._msg(0x99, nota, min(127, vel + 12) if prima else vel)
+                    dublu = redare.vel_dublura(v, prima)      # peste 100 la sută: aceeași lovitură încă o dată, deodată
+                    if dublu:
+                        sint._msg(0x99, nota, dublu)
                 nota_veche = nota
                 k += 1
                 urm += self.f.secunde_bataie()
