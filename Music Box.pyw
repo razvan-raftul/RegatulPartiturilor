@@ -59,7 +59,7 @@ Redare cu sunet (se cântă măsurile și portativele alese):
 K: redă selecția; apăsat în timp ce se cântă, oprește; apăsat din nou, continuă de unde ai rămas.
 Shift plus K: reia selecția de la început.
 I: redă de la măsura aleasă până la final.
-Shift plus 1: mai rar cu 5 la sută. Shift plus 2: mai repede cu 5 la sută. Control plus Shift plus 1 și Control plus Shift plus 2: mai rar și mai repede cu 1 la sută. Shift plus 3: tempoul scris în piesă. Dacă piesa se cântă, se schimbă pe loc și continuă de unde a ajuns.
+Shift plus 1: mai rar cu 5 bătăi pe minut. Shift plus 2: mai repede cu 5 bătăi pe minut. Control plus Shift plus 1 și Control plus Shift plus 2: mai rar și mai repede cu 1 bătaie pe minut. Shift plus 3: tempoul scris în piesă. Dacă piesa se cântă, se schimbă pe loc și continuă de unde a ajuns.
 Control plus R: redare în buclă, pornită sau oprită.
 
 Metronomul (cântă bătăile măsurii odată cu piesa, mereu în tempoul ei):
@@ -132,7 +132,7 @@ class Fereastra(wx.Frame):
         recunoastere.SETARI['homr'] = self.setari.get('homr', '')
         self.redare = redare.Redare()
         self.redare.la_sfarsit = lambda: wx.CallAfter(self.SetStatusText, _('Redarea s-a terminat.'))
-        self.procent = int(self.setari.get('tempo', 100))
+        self.procent = float(self.setari.get('tempo', 100))
         self.metronom = bool(self.setari.get('metronom', False))
         self.volum_metronom = int(self.setari.get('metronom_volum', 60))
         self.sint = sunete.sintetizator()
@@ -227,10 +227,10 @@ class Fereastra(wx.Frame):
         self._m(r, _('Reia de la început (Shift K)'), lambda e: self.reda(False))
         self._m(r, _('Redă de la măsura aleasă până la final (I)'), lambda e: self.reda(True))
         r.AppendSeparator()
-        self._m(r, _('Mai rar cu 5 la sută (Shift 1)'), lambda e: self.schimba_tempo(-5))
-        self._m(r, _('Mai repede cu 5 la sută (Shift 2)'), lambda e: self.schimba_tempo(5))
-        self._m(r, _('Mai rar cu 1 la sută (Control Shift 1)'), lambda e: self.schimba_tempo(-1))
-        self._m(r, _('Mai repede cu 1 la sută (Control Shift 2)'), lambda e: self.schimba_tempo(1))
+        self._m(r, _('Mai rar cu 5 bătăi pe minut (Shift 1)'), lambda e: self.schimba_tempo(-5))
+        self._m(r, _('Mai repede cu 5 bătăi pe minut (Shift 2)'), lambda e: self.schimba_tempo(5))
+        self._m(r, _('Mai rar cu 1 bătaie pe minut (Control Shift 1)'), lambda e: self.schimba_tempo(-1))
+        self._m(r, _('Mai repede cu 1 bătaie pe minut (Control Shift 2)'), lambda e: self.schimba_tempo(1))
         self._m(r, _('Tempoul scris în piesă (Shift 3)'), lambda e: self.schimba_tempo(0))
         self.m_bucla = r.AppendCheckItem(wx.ID_ANY, _('Redare în buclă\tCtrl+R'))
         self.Bind(wx.EVT_MENU, self.comuta_bucla, self.m_bucla)
@@ -800,7 +800,7 @@ class Fereastra(wx.Frame):
             sel = (id(self.P), prima, ultima, tuple(port))
             self._porneste(sel)
             unde = _('măsura {0}', prima) if prima == ultima else _('măsurile {0}-{1}', prima, ultima)
-            self.SetStatusText(_('Se cântă {0}, tempo {1} la sută', unde, self.procent) + (_(', în buclă.') if self.redare.bucla else '.'))
+            self.SetStatusText(_('Se cântă {0}, {1} bătăi pe minut', unde, self.bpm()) + (_(', în buclă.') if self.redare.bucla else '.'))
         except Exception as ex:
             traceback.print_exc()
             self.mesaj(_('Nu am putut reda. Eroare: {0}', ex), _('Redare'))
@@ -889,14 +889,42 @@ class Fereastra(wx.Frame):
         self.redare.opreste()
         self.SetStatusText(_('Oprit.'))
 
+    def tempo_scris(self):
+        """Bătăile pe minut scrise în piesa deschisă (prima indicație de metronom); 100 dacă nu e scris nimic."""
+        P = getattr(self, 'P', None)
+        if P is None:
+            return redare.TEMPO_IMPLICIT
+        if getattr(self, '_tempo_scris', (None, 0))[0] != id(P):
+            n = redare.TEMPO_IMPLICIT
+            try:
+                from music21 import tempo as m21tempo
+                mm = P.scor.recurse().getElementsByClass(m21tempo.MetronomeMark).first()
+                if mm is not None:
+                    n = mm.number or mm.getQuarterBPM() or n
+            except Exception:
+                pass
+            self._tempo_scris = (id(P), float(n))
+        return self._tempo_scris[1]
+
+    def bpm(self):
+        """Tempoul de acum, în bătăi pe minut (tempoul scris înmulțit cu cât l-ai grăbit sau încetinit)."""
+        return int(round(self.tempo_scris() * self.procent / 100))
+
     def schimba_tempo(self, pas):
-        vechi = self.procent
-        self.procent = 100 if pas == 0 else min(200, max(20, self.procent + pas))
-        if pas and self.procent == vechi:
-            text = (_('Tempoul e deja cel mai rar, {0} la sută.', self.procent) if pas < 0 else
-                    _('Tempoul e deja cel mai repede, {0} la sută.', self.procent))
+        """pas în bătăi pe minut (Shift 1 / 2 câte 5, Control Shift 1 / 2 câte 1); 0 = tempoul scris în piesă."""
+        vechi = self.bpm()
+        if pas == 0:
+            self.procent = 100
         else:
-            text = _('Tempo {0} la sută.', self.procent)
+            nou = min(400, max(20, vechi + pas))
+            self.procent = nou * 100.0 / self.tempo_scris()
+        if pas and self.bpm() == vechi:
+            text = (_('Tempoul e deja cel mai rar, {0} bătăi pe minut.', self.bpm()) if pas < 0 else
+                    _('Tempoul e deja cel mai repede, {0} bătăi pe minut.', self.bpm()))
+        elif pas == 0:
+            text = _('Tempoul scris în piesă, {0} bătăi pe minut.', self.bpm())
+        else:
+            text = _('{0} bătăi pe minut.', self.bpm())
         self.SetStatusText(text)
         voce.spune(text, intrerupe=True)
         self._amana_aplicarea()
@@ -2492,15 +2520,15 @@ class Fereastra(wx.Frame):
         r = e.GetRawKeyCode() if os.name == 'nt' else 0
         if shift and not alt:
             if not ctrl and (k == ord('1') or r == 0x31):
-                return zi(_('Mai rar cu 5 la sută (Shift 1)'))
+                return zi(_('Mai rar cu 5 bătăi pe minut (Shift 1)'))
             if not ctrl and (k == ord('2') or r == 0x32):
-                return zi(_('Mai repede cu 5 la sută (Shift 2)'))
+                return zi(_('Mai repede cu 5 bătăi pe minut (Shift 2)'))
             if not ctrl and (k in (ord('3'), ord('0')) or r in (0x33, 0x30)):
                 return zi(_('Tempoul scris în piesă (Shift 3)'))
             if ctrl and (r == 0x31 or sc == 0x02):
-                return zi(_('Mai rar cu 1 la sută (Control Shift 1)'))
+                return zi(_('Mai rar cu 1 bătaie pe minut (Control Shift 1)'))
             if ctrl and (r == 0x32 or sc == 0x03):
-                return zi(_('Mai repede cu 1 la sută (Control Shift 2)'))
+                return zi(_('Mai repede cu 1 bătaie pe minut (Control Shift 2)'))
             plus = sc in (0x0D, 0x4E) or k in (wx.WXK_NUMPAD_ADD, ord('+'), ord('='))
             minus = sc in (0x0C, 0x4A) or k in (wx.WXK_NUMPAD_SUBTRACT, ord('-'), ord('_'))
             if plus:
@@ -2656,8 +2684,11 @@ class Fereastra(wx.Frame):
         if shift and (minus or plus):
             self.schimba_volum_metronom((5 if ctrl else 1) * (1 if plus else -1))
             return
+        if shift and self._pagina() is self.p_metronom and (r in (0x31, 0x32, 0x33) or sc in (0x02, 0x03, 0x04)):
+            if self.p_metronom.tasta(e):          # în fila Metronom, Shift 1 / 2 schimbă tempoul metronomului
+                return
         if ctrl and shift and (r in (0x31, 0x32) or sc in (0x02, 0x03)):
-            self.schimba_tempo(-1 if (r == 0x31 or sc == 0x02) else 1)       # Control Shift 1 / 2: câte 1 la sută
+            self.schimba_tempo(-1 if (r == 0x31 or sc == 0x02) else 1)       # Control Shift 1 / 2: câte 1 bătaie pe minut
             return
         if not ctrl:
             if shift and (k == ord('1') or r == 0x31):
@@ -3582,10 +3613,16 @@ class PaginaMetronom(wx.Panel):
             f.sint.elibereaza()
             f._redat = None                    # redarea nu mai e a partiturii
             f.redare.bucla = True
-            f.redare.canta(self._midi())
+            cale = self._midi()
+            try:
+                f.redare.canta(cale)
+            except Exception:
+                time.sleep(0.15)                 # sintetizatorul Windows abia s-a eliberat: încă o dată
+                f.redare.canta(cale)
         except Exception as ex:
             self.merge = False
             self.t.SetValue(str(ex))
+            voce.spune(_('Metronomul nu a putut porni. Eroare: {0}', ex), intrerupe=True)
 
     def porneste(self):
         self.merge = True
