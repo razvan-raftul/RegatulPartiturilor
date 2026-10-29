@@ -41,7 +41,8 @@ def _fluid(cale_dll=None):
                             ('new_fluid_player', vp, [vp]), ('delete_fluid_player', None, [vp]),
                             ('fluid_player_add_mem', ci, [vp, vp, ctypes.c_size_t]),
                             ('fluid_player_play', ci, [vp]), ('fluid_player_get_status', ci, [vp]),
-                            ('fluid_synth_write_s16', ci, [vp, ci, vp, ci, ci, vp, ci, ci])):
+                            ('fluid_synth_write_s16', ci, [vp, ci, vp, ci, ci, vp, ci, ci]),
+                            ('fluid_synth_noteon', ci, [vp, ci, ci, ci])):
         fn = getattr(f, nume)
         fn.restype = res
         fn.argtypes = args
@@ -131,6 +132,55 @@ def pe_maini(sunete):
     return la16(mix), [la16(y) for y in lungi]
 
 
+def lovituri_metronom(note, cale_dll=None, cale_sf2=None):
+    """Loviturile metronomului (wood block-urile date, pe canalul de tobe) din banca GeneralUser GS, ca sunet:
+    {nota: float32 mono, cu vârful 1}. Se fac o singură dată, în câteva zecimi de secundă."""
+    from . import sunete
+    f = _fluid(cale_dll)
+    if cale_sf2 is None:
+        cale_sf2 = os.path.join(sunete.folder_sunete(), sunete.SF2)
+    st = f.new_fluid_settings()
+    f.fluid_settings_setnum(st, b'synth.sample-rate', float(RATA))
+    f.fluid_settings_setnum(st, b'synth.gain', 0.7)
+    f.fluid_settings_setint(st, b'synth.lock-memory', 0)
+    synth = f.new_fluid_synth(st)
+    rez = {}
+    try:
+        if f.fluid_synth_sfload(synth, cale_sf2.encode('mbcs' if os.name == 'nt' else 'utf-8'), 1) < 0:
+            raise RuntimeError('banca de sunete')
+        bloc = 1024
+        buf = (ctypes.c_int16 * (bloc * 2))()
+        for nota in note:
+            f.fluid_synth_noteon(synth, 9, nota, 127)
+            bucati = []
+            for _i in range(int(0.4 * RATA / bloc)):
+                f.fluid_synth_write_s16(synth, bloc, buf, 0, 2, buf, 1, 2)
+                bucati.append(np.frombuffer(buf, dtype=np.int16).copy())
+            x = np.concatenate(bucati).reshape(-1, 2).astype(np.float32).mean(axis=1)
+            varf = float(np.abs(x).max())
+            if varf <= 0:
+                raise RuntimeError('lovitura fără sunet')
+            x /= varf
+            liniste = np.nonzero(np.abs(x) > 0.002)[0]
+            rez[nota] = x[:liniste[-1] + 1].copy() if len(liniste) else x
+            for _i in range(int(0.3 * RATA / bloc)):          # se stinge complet înainte de următoarea notă
+                f.fluid_synth_write_s16(synth, bloc, buf, 0, 2, buf, 1, 2)
+        return rez
+    finally:
+        f.delete_fluid_synth(synth)
+        f.delete_fluid_settings(st)
+
+
+NIVEL_100 = 0.6     # vârful unei lovituri la volumul 100 la sută (din maximul plăcii de sunet)
+
+
+def la_volum(lovitura, volum):
+    """Lovitura la volumul dat (0–200 la sută). Peste 100 la sută nu doar crește: se și „îndeasă” (limitare blândă,
+    tanh), ca sunetul să fie mai plin și mai tare fără să se strice la vârf."""
+    x = lovitura * (NIVEL_100 * volum / 100.0)
+    return (0.98 * np.tanh(x / 0.98)).astype(np.float32)
+
+
 def _clic(accent):
     """O lovitură scurtă, ca de wood block (fără înălțime muzicală clară)."""
     n = int(0.06 * RATA)
@@ -211,7 +261,7 @@ WHDR_DONE = 1
 
 
 class IesireWaveOut:
-    def __init__(self):
+    def __init__(self, hop=HOP, nr=NR_BUFERE):
         w = ctypes.windll.winmm
         self.w = w
         fmt = _WAVEFORMATEX(1, 2, RATA, RATA * 4, 4, 16, 0)
@@ -219,12 +269,12 @@ class IesireWaveOut:
         err = w.waveOutOpen(ctypes.byref(self.h), ctypes.c_uint(0xFFFFFFFF), ctypes.byref(fmt), 0, 0, 0)
         if err:
             raise RuntimeError(f'waveOutOpen {err}')
-        self.mem = [ctypes.create_string_buffer(HOP * 4) for _i in range(NR_BUFERE)]
+        self.mem = [ctypes.create_string_buffer(hop * 4) for _i in range(nr)]
         self.hdr = []
         for m in self.mem:
             h = _WAVEHDR()
             h.lpData = ctypes.cast(m, ctypes.c_void_p)
-            h.dwBufferLength = HOP * 4
+            h.dwBufferLength = hop * 4
             w.waveOutPrepareHeader(self.h, ctypes.byref(h), ctypes.sizeof(h))
             h.dwFlags |= WHDR_DONE                          # liber de la început
             self.hdr.append(h)
@@ -298,7 +348,8 @@ class PlayerAudio:
             out[i - a:j - a] = sursa[i:j]
             v = self.volum_metronom
             if v > 0 and self.metronom is not None:
-                out[i - a:j - a] += (self.metronom[i:j] * (v * 22000.0))[:, None]
+                # limitare blândă: la 200 la sută clicul e mai plin și mai tare, nu doar tăiat la vârf
+                out[i - a:j - a] += (np.tanh(self.metronom[i:j] * (v * 0.67)) * 32000.0)[:, None]
                 np.clip(out, -32768, 32767, out=out)      # peste 100 la sută metronomul poate trece de maxim
         return out
 
