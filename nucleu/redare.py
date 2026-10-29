@@ -237,8 +237,17 @@ NOTA_ACCENT = 76       # Hi Wood Block (prima bătaie din măsură)
 NOTA_BATAIE = 77       # Low Wood Block
 
 
+def vel_dublura(volum, prima=False) -> int:
+    """Peste 100 la sută metronomul e mai tare: aceeași lovitură se mai trimite o dată, în același moment,
+    cu tăria aceasta (0 = fără dublură). La 200 la sută sunt două lovituri întregi."""
+    if volum <= 100:
+        return 0
+    v = max(1, min(127, round(127 * (volum - 100) / 100)))
+    return min(127, v + 12) if prima else v
+
+
 def cu_metronom(date: bytes, lista_batai, volum: int) -> bytes:
-    """Adaugă pista metronomului (canalul 10, percuție). volum: 0–100 la sută.
+    """Adaugă pista metronomului (canalul 10, percuție). volum: 0–200 la sută (peste 100 lovitura se dublează).
     Tempoul vine din aceeași hartă de tempo ca melodia, deci metronomul merge mereu odată cu ea."""
     if not lista_batai or volum <= 0:
         return date
@@ -250,6 +259,9 @@ def cu_metronom(date: bytes, lista_batai, volum: int) -> bytes:
     for poz, prima in lista_batai:
         t = int(round(poz * div))
         ev.append((t, bytes([0x99, NOTA_ACCENT if prima else NOTA_BATAIE, accent if prima else vel])))
+        dublu = vel_dublura(volum, prima)
+        if dublu:
+            ev.append((t, bytes([0x99, NOTA_ACCENT if prima else NOTA_BATAIE, dublu])))
         ev.append((t + scurt, bytes([0x89, NOTA_ACCENT if prima else NOTA_BATAIE, 0])))
     ev.sort(key=lambda x: x[0])
     return _scrie(1, div, piste + [ev])

@@ -263,7 +263,7 @@ class PlayerAudio:
     def __init__(self):
         self.muzica = None           # int16 (n, 2)
         self.metronom = None         # float32 (n,)
-        self.volum_metronom = 0.0    # 0..1 (0 = oprit)
+        self.volum_metronom = 0.0    # 0..2 (0 = oprit; peste 1 = mai tare de 100 la sută)
         self.viteza = 1.0            # 1.0 = tempoul scris; 0.5 = de două ori mai rar
         self.stare = 'oprit'
         self.la_sfarsit = None
@@ -299,6 +299,7 @@ class PlayerAudio:
             v = self.volum_metronom
             if v > 0 and self.metronom is not None:
                 out[i - a:j - a] += (self.metronom[i:j] * (v * 22000.0))[:, None]
+                np.clip(out, -32768, 32767, out=out)      # peste 100 la sută metronomul poate trece de maxim
         return out
 
     # ---- comenzi ----
