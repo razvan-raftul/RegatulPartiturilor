@@ -105,6 +105,17 @@ def _SCURTATURI_FILE():
                   lambda m: m.group(1) + noi[m.group(2)], SCURTATURI)
 
 
+def tine_tasta(vk):
+    """Adevărat dacă tasta (codul virtual Windows, de ex. 0x50 = P, 0x4B = K) e ținută apăsată acum."""
+    if os.name != 'nt':
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
+    except Exception:
+        return False
+
+
 def citeste_setari():
     try:
         with open(FIS_SETARI, encoding='utf-8') as f:
@@ -223,9 +234,9 @@ class Fereastra(wx.Frame):
         self._m(n, _('Lista de măsuri\tCtrl+L'), lambda e: self._la_lista())
         mb.Append(n, _('&Navigare'))
         r = wx.Menu()
-        # K, Shift K, tempoul și volumul metronomului se prind direct din tastatură (vezi _taste): în meniu doar se afișează
+        # K, K și P împreună, tempoul și volumul metronomului se prind direct din tastatură (vezi _taste): în meniu doar se afișează
         self._m(r, _('Redă, oprește sau continuă (K)'), lambda e: self.reda_sau_pauza())
-        self._m(r, _('Reia de la început (Shift K)'), lambda e: self.reda(False))
+        self._m(r, _('Reia de la început (K și P împreună)'), lambda e: self.reda(False))
         self._m(r, _('Redă de la măsura aleasă până la final (I)'), lambda e: self.reda(True))
         r.AppendSeparator()
         self._m(r, _('Mai rar cu 5 bătăi pe minut (Shift 1)'), lambda e: self.schimba_tempo(-5))
@@ -248,7 +259,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control End)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are trei subfile: În cuvinte, Braille și Player; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, Shift K o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are trei subfile: În cuvinte, Braille și Player; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, K și P împreună o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -893,7 +904,7 @@ class Fereastra(wx.Frame):
             self.reda(False)
             return
         if self.redare.terminat():
-            # s-a terminat (sau nu se cântă nimic): K o ia de la începutul selecției, ca Shift K
+            # s-a terminat (sau nu se cântă nimic): K o ia de la începutul selecției, ca K și P împreună
             self.redare.opreste()
             self.reda(False)
         else:
@@ -2505,7 +2516,7 @@ class Fereastra(wx.Frame):
             for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17), (ord('R'), 0x13)):
                 if sc == sck:
                     k = kk
-            d = {ord('K'): _('o ia de la capăt.') if shift else _('pune pauză și continuă.'), ord('L'): _('înainte 5 secunde.'),
+            d = {ord('K'): _('o ia de la capăt.') if tine_tasta(0x50) else _('pune pauză și continuă.'), ord('L'): _('înainte 5 secunde.'),
                  ord('J'): _('înapoi 5 secunde.'), ord('I'): _('spune minutul și secunda la care ești.'),
                  ord('R'): _('alege ce se întâmplă la sfârșit: repetă, se oprește sau trece la următoarea.'),
                  wx.WXK_ESCAPE: _('oprește.'), wx.WXK_UP: _('fișierul de deasupra, se aude imediat.'),
@@ -2576,7 +2587,7 @@ class Fereastra(wx.Frame):
                     k = kk
             if not ctrl and not alt:
                 if k == ord('K'):
-                    return zi(_('Reia de la început (Shift K)') if shift else _('Redă, oprește sau continuă (K)'))
+                    return zi(_('Reia de la început (K și P împreună)') if tine_tasta(0x50) else _('Redă, oprește sau continuă (K)'))
                 if k == ord('I') and not shift:
                     return zi(_('Redă de la măsura aleasă până la final (I)'))
                 if k == ord('L') and not shift:
@@ -2609,7 +2620,7 @@ class Fereastra(wx.Frame):
 
     def _taste(self, e):
         """Tastele de redare, prinse direct din tastatură (după tasta fizică, oricare ar fi aranjarea tastaturii):
-        Shift 1 / 2 / 3 tempoul; K redă, oprește, continuă; Shift K de la început; L și J măsura următoare și anterioară;
+        Shift 1 / 2 / 3 tempoul; K redă, oprește, continuă; K și P împreună de la început; L și J măsura următoare și anterioară;
         Shift plus / minus volumul metronomului cu 1, cu Control cu 5. Nu se prind când scrii într-un câmp."""
         foc = wx.Window.FindFocus()
         # F2: ajutorul la taste; cât e pornit, orice tastă spune ce face (în fila deschisă), fără s-o facă
@@ -2755,10 +2766,12 @@ class Fereastra(wx.Frame):
                 self.schimba_tempo(5); return
             if shift and (k in (ord('3'), ord('0')) or r in (0x33, 0x30)):
                 self.schimba_tempo(0); return
+            # K și P apăsate împreună (în orice ordine): de la început (în locul lui Shift K, cerut de Răzvan)
+            if ((k == ord('K') or r == 0x4B) and tine_tasta(0x50)) or ((k == ord('P') or r == 0x50) and tine_tasta(0x4B)):
+                self.reda(False)
+                return
             if k == ord('K') or r == 0x4B:
-                if shift:
-                    self.reda(False)
-                else:
+                if not shift:                        # Shift K nu mai face nimic (cerut de Răzvan): de la început e K și P
                     self.reda_sau_pauza()
                 return
             if not shift and (k == ord('I') or r == 0x49):
@@ -3168,6 +3181,8 @@ class PaginaPlayer(wx.Panel):
         """Tastele playerului; întoarce True dacă a folosit tasta."""
         k = e.GetKeyCode()
         sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+        if ((k == ord('K') or sc == 0x25) and tine_tasta(0x50)) or ((k == ord('P') or sc == 0x19) and tine_tasta(0x4B)):
+            k, sc = wx.WXK_HOME, 0             # K și P împreună: de la început, ca Home
         if k == wx.WXK_TAB and not e.ControlDown() and not e.AltDown():
             # în player nu e nimic altceva de ales: Tab rămâne aici (nu trece la măsuri și opțiuni)
             voce.spune(self.t.GetValue(), intrerupe=True)
@@ -3565,8 +3580,11 @@ class PaginaFisiere(scrolled.ScrolledPanel):
                 return True
             if k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 return True                              # Enter nu „apasă” butonul
-            if k == ord('K') or sc == 0x25:
-                if e.ShiftDown():
+            kp = ((k == ord('K') or sc == 0x25) and tine_tasta(0x50)) or ((k == ord('P') or sc == 0x19) and tine_tasta(0x4B))
+            if (k == ord('K') or sc == 0x25) and e.ShiftDown() and not kp:
+                return True                              # Shift K nu mai face nimic: de la capăt e K și P împreună
+            if kp or k == ord('K') or sc == 0x25:
+                if kp:                                   # K și P împreună: de la capăt
                     if m.cale:
                         m.de_la_capat()
                     else:
