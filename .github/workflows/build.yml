@@ -56,6 +56,20 @@ jobs:
             Get-ChildItem sunete | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
           } catch { Write-Host "Fara sunete: $_" }
           exit 0
+      - name: ffmpeg (fila Muzică, tempo și înălțime pentru fișierele audio)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          try {
+            Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl-shared.zip" -OutFile ff.zip
+            Expand-Archive ff.zip -DestinationPath ff -Force
+            New-Item -ItemType Directory -Force sunete\ffmpeg | Out-Null
+            Get-ChildItem ff -Recurse -Include 'ffmpeg.exe','*.dll' | Where-Object { $_.FullName -match '\\bin\\' } | ForEach-Object { Copy-Item $_.FullName sunete\ffmpeg\ }
+            New-Item -ItemType Directory -Force dist\MusicBox\sunete | Out-Null
+            Copy-Item sunete\ffmpeg dist\MusicBox\sunete\ -Recurse -Force
+            Get-ChildItem sunete\ffmpeg | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
+          } catch { Write-Host "Fara ffmpeg: $_" }
+          exit 0
       - name: NVDA Controller Client (NVDA spune progresul actualizării)
         shell: pwsh
         run: |
