@@ -278,7 +278,7 @@ class Fereastra(wx.Frame):
         self._m(r, _('Metronomul mai încet cu 5 la sută (Control End)'), lambda e: self.schimba_volum_metronom(-5))
         mb.Append(r, _('&Redare'))
         a = wx.Menu()
-        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are trei subfile: În cuvinte, Braille și Player; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. K pune pauză și continuă, K de două ori repede o ia de la capăt, L înainte 5 secunde, J înapoi 5 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: repetă piesa, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, mai tare și mai încet.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
+        self._m(a, _('Scurtături\tF1'), lambda e: self.mesaj(_SCURTATURI_FILE() + '\n\n' + _('Filele: Control 1 Muzică, Control 2 Claviatura, Control 3 Partituri, Control 4 Scrie o partitură, Control 5 Exerciții de auz, Control 6 Setări. Partituri are trei subfile: În cuvinte, Braille și Player; apasă Control 3 din nou ca să treci la următoarea (sau Control Tab).') + '\n\n' + _('Player (Control 3, a treia subfilă din Partituri): cântă toată piesa, de la prima măsură până la capăt. K pornește, pune pauză și continuă; L derulează înainte 5 secunde, J înapoi 5 secunde, ca pe YouTube; I spune minutul și secunda la care ești și măsura; Home o ia de la început; Escape oprește. Tempoul (Shift 1, 2, 3) și metronomul (Control Shift M, Shift plus și minus) merg și în player.') + ' ' + _('M alege ce auzi: ambele mâini, doar mâna dreaptă sau doar mâna stângă.') + '\n\n' + _('Muzică (Control 1): alegi un folder de pe calculator; fiecare folder din el e un loc la Tab. Acolo, săgeata stânga și dreapta trec prin folder și subfolderele lui; săgețile sus și jos trec prin fișiere și fiecare se aude imediat, fără să fie citit. Spațiu spune numele fișierului și al câtelea e. Cifrele te duc direct la melodia cu numărul acela (scrii repede 14 pentru a paisprezecea). K pune pauză și continuă, K de două ori repede o ia de la capăt, L înainte 10 secunde, J înapoi 10 secunde, I spune unde ești, R alege ce se întâmplă la sfârșit: se repetă, se oprește sau trece la următoarea. Escape oprește.') + ' ' + _('Control Home și Control End: volumul, cu câte 5 la sută. Shift 1 și Shift 2: tempoul mai rar și mai repede. Shift 3 și Shift 4: cu un semiton mai jos și mai sus.') + '\n\n' + _('F2: ajutorul la taste. Cât e pornit, orice tastă apeși îți spune ce face în fila în care ești, fără s-o facă. F2 sau Escape ies.'), _('Scurtături')))
         self._m(a, _('Caută actualizări'), lambda e: self.verifica_actualizari(True))
         self._m(a, _('Despre'), lambda e: self.mesaj(_('{0}, versiunea {1}.\nCitește partituri în cuvinte și în Braille muzical.\nFolosește music21 pentru note, Braille și sunet; homr și Audiveris pentru recunoașterea PDF-urilor, comparate măsură cu măsură; MuseScore pentru fișierele .mscz.', NUME, VERSIUNE), _('Despre')))
         mb.Append(a, _('&Ajutor'))
@@ -2530,14 +2530,22 @@ class Fereastra(wx.Frame):
             return zi(_('nu face nimic în claviatură.'))
         # fișiere audio
         if pag is self.p_fisiere and ctrl and not (alt or shift) and k in (wx.WXK_HOME, wx.WXK_END):
-            return zi(_('volumul mai tare cu 10 la sută.') if k == wx.WXK_HOME else _('volumul mai încet cu 10 la sută.'))
+            return zi(_('volumul mai tare cu 5 la sută.') if k == wx.WXK_HOME else _('volumul mai încet cu 5 la sută.'))
+        if pag is self.p_fisiere and shift and not (ctrl or alt):
+            r = e.GetRawKeyCode() if os.name == 'nt' else 0
+            d = {1: _('tempoul mai rar.'), 2: _('tempoul mai repede.'), 3: _('cu un semiton mai jos.'), 4: _('cu un semiton mai sus.')}
+            for c in d:
+                if r == 0x30 + c or sc == 1 + c:
+                    return zi(d[c])
         if foc in self.p_fisiere.locuri and not (ctrl or alt):
             for kk, sck in ((ord('K'), 0x25), (ord('L'), 0x26), (ord('J'), 0x24), (ord('I'), 0x17), (ord('R'), 0x13)):
                 if sc == sck:
                     k = kk
-            d = {ord('K'): _('pune pauză și continuă.') + ' K K: ' + _('o ia de la capăt.'), ord('L'): _('înainte 5 secunde.'),
-                 ord('J'): _('înapoi 5 secunde.'), ord('I'): _('spune minutul și secunda la care ești.'),
-                 ord('R'): _('alege ce se întâmplă la sfârșit: repetă, se oprește sau trece la următoarea.'),
+            if not shift and PaginaFisiere._cifra(e, k, sc) is not None:
+                return zi(_('scrii numărul melodiei și ajungi direct la ea.'))
+            d = {ord('K'): _('pune pauză și continuă.') + ' K K: ' + _('o ia de la capăt.'), ord('L'): _('înainte 10 secunde.'),
+                 ord('J'): _('înapoi 10 secunde.'), ord('I'): _('spune minutul și secunda la care ești.'),
+                 ord('R'): _('se repetă, se oprește sau trece la următoarea.'),
                  wx.WXK_ESCAPE: _('oprește.'), wx.WXK_UP: _('fișierul de deasupra, se aude imediat.'),
                  wx.WXK_DOWN: _('fișierul de dedesubt, se aude imediat.'), wx.WXK_RIGHT: _('subfolderul următor.'),
                  wx.WXK_LEFT: _('subfolderul anterior.'), wx.WXK_SPACE: _('spune numele fișierului și al câtelea e.')}
@@ -3433,8 +3441,7 @@ class PaginaFisiere(scrolled.ScrolledPanel):
     """Fila Fișiere audio. Fiecare folder de sus e un loc la Tab (NVDA spune doar numele lui). Acolo:
     săgeata stânga/dreapta trece prin folder și subfolderele lui (NVDA spune numele), săgeata jos/sus prin fișiere,
     fără ca NVDA să spună ceva (fișierul doar se aude, imediat); spațiu spune numele și „2 din 15”."""
-    NUME_MOD = {'urmatoarea': _('La sfârșit trece la următoarea.'), 'repeta': _('La sfârșit repetă piesa.'),
-                'opreste': _('La sfârșit se oprește.')}
+    NUME_MOD = {'urmatoarea': _('Trece la următoarea.'), 'repeta': _('Se repetă.'), 'opreste': _('Se oprește.')}
 
     def __init__(self, carte, fereastra):
         super().__init__(carte)
@@ -3543,6 +3550,50 @@ class PaginaFisiere(scrolled.ScrolledPanel):
         else:
             voce.spune(_('{0}: {1} fișiere.', nume, len(fisiere)), intrerupe=True)
 
+    @staticmethod
+    def _cifra(e, k, sc):
+        """Cifra apăsată (rândul de sus sau tastatura numerică), altfel None."""
+        if ord('0') <= k <= ord('9'):
+            return k - ord('0')
+        if wx.WXK_NUMPAD0 <= k <= wx.WXK_NUMPAD9:
+            return k - wx.WXK_NUMPAD0
+        if 0x02 <= sc <= 0x0B:                           # tastele fizice 1 … 9, 0
+            return (sc - 1) % 10
+        return None
+
+    def _tasteaza_numar(self, b, cifra):
+        """Cifrele scrise repede (sub 0,8 secunde una după alta) fac un număr: melodia cu numărul acela din folder.
+        Dacă numărul nu mai poate crește (de ex. 8 când sunt 15 melodii), sare imediat; altfel așteaptă o clipă."""
+        _loc, _n, fisiere = self._loc(b)
+        acum = time.time()
+        if acum - getattr(self, '_numar_t', 0) > 0.8 or getattr(self, '_numar_b', None) is not b:
+            self._numar = ''
+        self._numar_t, self._numar_b = acum, b
+        self._numar = (self._numar + str(cifra))[-4:]
+        if getattr(self, '_numar_amanat', None):
+            self._numar_amanat.Stop()
+        n = int(self._numar)
+        if n == 0 or n * 10 > len(fisiere):
+            self._sari_la_numar(b)
+        else:
+            self._numar_amanat = wx.CallLater(800, self._sari_la_numar, b)
+
+    def _sari_la_numar(self, b):
+        self._numar_amanat = None
+        txt, self._numar = getattr(self, '_numar', ''), ''
+        if not txt or b not in self.locuri:
+            return
+        loc, _n, fisiere = self._loc(b)
+        n = int(txt)
+        if not (1 <= n <= len(fisiere)):
+            voce.spune(_('Nu există melodia {0}.', n), intrerupe=True)
+            return
+        loc['i'] = n - 1
+        if self._amanat:
+            self._amanat.Stop()
+            self._amanat = None
+        self._canta(b)
+
     def _schimba_folder(self, b, pas):
         loc = self.locuri[b]
         n = len(loc['foldere'])
@@ -3568,14 +3619,45 @@ class PaginaFisiere(scrolled.ScrolledPanel):
                 self._canta(b)
 
     def volum(self, e):
-        """Control Home mai tare, Control End mai încet, cu câte 10 la sută. Întoarce True dacă a folosit tasta."""
+        """Control Home mai tare, Control End mai încet, cu câte 5 la sută; Shift 1 / 2 tempoul, Shift 3 / 4 înălțimea
+        (oriunde în fila Muzică). Întoarce True dacă a folosit tasta."""
         if e.ControlDown() and not e.AltDown() and not e.ShiftDown() and e.GetKeyCode() in (wx.WXK_HOME, wx.WXK_END):
-            v = self.melodie.schimba_volum(10 if e.GetKeyCode() == wx.WXK_HOME else -10)
+            v = self.melodie.schimba_volum(5 if e.GetKeyCode() == wx.WXK_HOME else -5)
             self.f.setari['volum_muzica'] = v
             scrie_setari(self.f.setari)
             voce.spune(_('Volum {0} la sută.', v), intrerupe=True)
             return True
+        if e.ShiftDown() and not e.ControlDown() and not e.AltDown():
+            r = e.GetRawKeyCode() if os.name == 'nt' else 0
+            sc = (e.GetRawKeyFlags() >> 16) & 0xFF if os.name == 'nt' else 0
+            k = e.GetKeyCode()
+            cifra = next((c for c in (1, 2, 3, 4) if r == 0x30 + c or sc == 1 + c or (not r and k == ord(str(c)))), 0)
+            if cifra:
+                self._viteza_inaltime(cifra)
+                return True
         return False
+
+    def _viteza_inaltime(self, cifra):
+        m = self.melodie
+        if m.cale and not m.cu_flux():
+            voce.spune(_('La fișierele MIDI tempoul și înălțimea nu se schimbă.'), intrerupe=True)
+            return
+        if not fisiere_audio.cale_ffmpeg():
+            voce.spune(_('Lipsește ffmpeg, tempoul și înălțimea nu se pot schimba.'), intrerupe=True)
+            return
+        if cifra in (1, 2):
+            t = m.schimba_tempo(-5 if cifra == 1 else 5) - 100
+            voce.spune(_('Tempo normal.') if t == 0 else (_('Tempo plus {0}.', t) if t > 0 else _('Tempo minus {0}.', -t)),
+                       intrerupe=True)
+        else:
+            n = m.schimba_inaltime(-1 if cifra == 3 else 1)
+            if n == 0:
+                txt = _('Înălțimea normală.')
+            elif abs(n) == 1:
+                txt = _('Plus 1 semiton.') if n > 0 else _('Minus 1 semiton.')
+            else:
+                txt = _('Plus {0} semitonuri.', n) if n > 0 else _('Minus {0} semitonuri.', -n)
+            voce.spune(txt, intrerupe=True)
 
     def tasta(self, e, b):
         """Tastele pe un folder; întoarce True dacă a folosit tasta."""
@@ -3593,13 +3675,17 @@ class PaginaFisiere(scrolled.ScrolledPanel):
             if k in (wx.WXK_LEFT, wx.WXK_RIGHT) and not e.ShiftDown():
                 self._schimba_folder(b, 1 if k == wx.WXK_RIGHT else -1)
                 return True
-            if k == wx.WXK_SPACE and not e.ShiftDown():
-                self._spune(b)
-                return True
             if k in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 return True                              # Enter nu „apasă” butonul
             if (k == ord('K') or sc == 0x25) and e.ShiftDown():
                 return True                              # Shift K nu face nimic
+            if k == wx.WXK_SPACE and not e.ShiftDown():
+                self._spune(b)                           # spațiu: numele melodiei și al câtelea e
+                return True
+            cifra = self._cifra(e, k, sc)
+            if cifra is not None and not e.ShiftDown():
+                self._tasteaza_numar(b, cifra)
+                return True
             kp = (k == ord('K') or sc == 0x25) and k_dublu(e)
             if kp or k == ord('K') or sc == 0x25:
                 if kp:                                   # K de două ori repede: de la capăt
@@ -3621,7 +3707,7 @@ class PaginaFisiere(scrolled.ScrolledPanel):
                 if m.stare != 'oprit':
                     inainte = k == ord('L') or sc == 0x26
                     lung = m.lungime()
-                    nou = m.pozitie() + (5000 if inainte else -5000)
+                    nou = m.pozitie() + (10000 if inainte else -10000)
                     m.sari(max(0, min(nou, max(0, lung - 200))))
                 return True
             if k == ord('I') or sc == 0x17:
@@ -3881,6 +3967,34 @@ def autotest(fisier, iesire):
         except Exception as ex:
             rez.append(f'METRONOM SINGUR eroare: {ex}')
         rez.append(f'PARTITURILE MELE {len(f._ids)} fisiere, curenta {f._curenta}; FOLDERE AUDIO {len(f.p_fisiere.butoane)}')
+        try:                       # fila Muzică: ffmpeg, tempo și înălțime (fără placa de sunet)
+            import wave
+            _cw = os.path.join(tempfile.gettempdir(), 'MusicBox-proba-la.wav')
+            _y = (np.sin(2 * np.pi * 440 * np.arange(inregistrare.RATA * 2) / inregistrare.RATA) * 12000).astype('<i2')
+            with wave.open(_cw, 'wb') as _w:
+                _w.setnchannels(2)
+                _w.setsampwidth(2)
+                _w.setframerate(inregistrare.RATA)
+                _w.writeframes(np.repeat(_y[:, None], 2, axis=1).tobytes())
+            _mf = fisiere_audio.MelodieFlux()
+            _mf._decodeaza(_cw)
+            while not _mf._decodat:
+                time.sleep(0.02)
+            _mf.semitonuri, _mf.viteza = 12, 1.5
+            _bl, _rs = _mf._generator()
+            _rs(0)
+            _bucati = []
+            while True:
+                _b = _bl()
+                if _b == 'gata' or _b is None:
+                    break
+                _bucati.append(_b[0][:, 0])
+            _o = np.concatenate(_bucati)
+            _seg = _o[4000:4000 + 32768]
+            _fr = np.argmax(np.abs(np.fft.rfft(_seg * np.hanning(len(_seg))))) * inregistrare.RATA / len(_seg)
+            rez.append(f'MUZICA FFMPEG {fisiere_audio.cale_ffmpeg()} durata {len(_o) / inregistrare.RATA:.2f}s (asteptat 1.33), frecventa {_fr:.0f} (asteptat 880)')
+        except Exception as ex:
+            rez.append(f'MUZICA FFMPEG eroare: {ex}')
         try:
             sf = sunete.SintetizatorFluid()
             sf.pregateste(cu_sunet=False)
