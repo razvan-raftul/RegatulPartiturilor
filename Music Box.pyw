@@ -667,7 +667,7 @@ class Fereastra(wx.Frame):
                         'Lista lor cu motivele e în același folder, în fișierul „de verificat”.') if P.nesigure
                         else _('Toate măsurile au fost citite la fel de ambele programe.')), _('Din PDF în Braille'))
         elif recunoscuta:
-            self.mesaj(P.descriere_generala(), _('Partitura e gata'))
+            self.mesaj(P.descriere_generala(cu_nuante=False), _('Partitura e gata'))
 
     # ---------------- afișare ----------------
     def selectie(self):
