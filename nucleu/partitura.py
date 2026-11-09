@@ -3,7 +3,7 @@ import copy
 import os
 from dataclasses import dataclass
 
-from music21 import converter, instrument, key, layout, meter, stream, tempo
+from music21 import converter, dynamics, expressions, instrument, key, layout, meter, stream, tempo
 
 from . import cuvinte, recunoastere
 from .limba import _
@@ -13,6 +13,17 @@ FORMATE_MUSESCORE = ('.mscz', '.mscx')
 FORMATE_IMAGINE = ('.pdf', '.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
 FORMATE_BRAILLE = ('.brl', '.brf')
 TOATE_FORMATELE = FORMATE_DIRECTE + FORMATE_MUSESCORE + FORMATE_IMAGINE + FORMATE_BRAILLE
+
+
+INDICATII = (('decresc.', 'decrescendo'), ('cresc.', 'crescendo'), ('dim.', 'diminuendo'), ('legg.', 'leggiero'),
+             ('p. a p.', 'poco a poco'), ('riten.', 'ritenuto'), ('rit.', 'ritardando'))
+
+
+def _text_indicatie(t: str) -> str:
+    """„cresc. poco a poco” -> „crescendo poco a poco”: prescurtările scrise întreg, ca să le spună NVDA bine."""
+    for scurt, lung in INDICATII:
+        t = t.replace(scurt, lung)
+    return t
 
 
 class EroarePartitura(Exception):
@@ -113,7 +124,7 @@ class Partitura:
         md = self.scor.metadata
         return (md.composer or '') if md else ''
 
-    def descriere_generala(self) -> str:
+    def descriere_generala(self, cu_nuante: bool = True) -> str:
         r = [self.titlu + '.']
         if self.compozitor:
             r.append(_('Compozitor: ') + self.compozitor + '.')
@@ -132,6 +143,9 @@ class Partitura:
         mm = self.scor.recurse().getElementsByClass(tempo.MetronomeMark).first()
         if mm is not None:
             t = cuvinte.text_tempo(mm)
+            cuv = self._text_tempo_scris(mm)
+            if cuv and cuv not in t:
+                t = [cuv] + t
             if t:
                 r.append(_('Tempo: ') + ', '.join(str(x) for x in t) + '.')
         n = len([x for x in self.numere if x])
@@ -139,7 +153,91 @@ class Partitura:
         r.append(_('Portative: ') + ', '.join(p.nume for p in self.portative) + '.')
         for a in self.avertismente:
             r.append(a)
-        return ' '.join(r)
+        text = ' '.join(r)
+        if cu_nuante:
+            n = self.nuante_pe_masuri()
+            if n:
+                text += '\n\n' + _('Nuanțe:') + '\n' + '\n'.join(n)
+        return text
+
+    @staticmethod
+    def _text_tempo_scris(mm):
+        """Cuvântul de tempo scris lângă metronom (de exemplu „Allegro”), pe care music21 îl citește separat."""
+        m = mm.getContextByClass(stream.Measure)
+        if m is None:
+            return ''
+        off = mm.getOffsetInHierarchy(m)
+        for te in m.recurse().getElementsByClass(expressions.TextExpression):
+            if abs(te.getOffsetInHierarchy(m) - off) < 0.01 and (te.content or '').strip():
+                return te.content.strip()
+        return ''
+
+    def nuante_pe_masuri(self) -> list:
+        """Nuanțele din toată piesa, câte una pe rând (pentru Despre piesă): de unde până unde se cântă
+        piano, forte etc. (până la următoarea nuanță) și unde sunt crescendo, diminuendo și alte indicații scrise."""
+        ev = []          # (măsura, offset, timpul, tip, text)
+        vazute = set()
+        de_tempo = set()
+        for mm in self.scor.recurse().getElementsByClass(tempo.MetronomeMark):
+            cuv = self._text_tempo_scris(mm)
+            if cuv:
+                de_tempo.add(cuv)
+        for pt in self.portative:
+            for m in pt.parte.getElementsByClass(stream.Measure):
+                bt = m.barDuration.quarterLength if m.barDuration else 4
+                ts = m.getContextByClass(meter.TimeSignature)
+                bata = ts.beatDuration.quarterLength if ts is not None else 1
+                for el in m.recurse().getElementsByClass([dynamics.Dynamic, expressions.TextExpression]):
+                    off = float(el.getOffsetInHierarchy(m))
+                    if isinstance(el, dynamics.Dynamic):
+                        tip, txt = 'n', cuvinte.NUANTE.get(el.value, el.value)
+                    else:
+                        txt = (el.content or '').strip()
+                        if not txt:
+                            continue
+                        if txt in de_tempo:
+                            continue
+                        tip, txt = 't', _text_indicatie(txt)
+                    cheie = (m.number, round(off, 3), txt)
+                    if cheie in vazute:
+                        continue
+                    vazute.add(cheie)
+                    timp = int(off // bata) + 1 if off > 0 and off < bt else 1
+                    ev.append((m.number, off, timp, tip, txt))
+        ev.sort(key=lambda x: (x[0], x[1], 0 if x[3] == 'n' else 1))
+        # aceeași nuanță scrisă din nou (de exemplu piano și în măsura următoare) nu începe o porțiune nouă
+        curata, activa = [], None
+        for x in ev:
+            if x[3] == 'n':
+                if x[4] == activa:
+                    continue
+                activa = x[4]
+            curata.append(x)
+        ev = curata
+        ultima = max((x for x in self.numere if x is not None), default=0)
+        rez = []
+        for i, (nr, off, timp, tip, txt) in enumerate(ev):
+            if nr == 0:
+                loc = _('anacruză')
+            else:
+                loc = _('măsura {0}', nr) if timp <= 1 else _('măsura {0}, timpul {1}', nr, timp)
+            if tip == 't':
+                rez.append(loc[0].upper() + loc[1:] + ': ' + txt + '.')
+                continue
+            urm = next((x for x in ev[i + 1:] if x[3] == 'n'), None)
+            if urm is None:
+                pana = _('până la sfârșit')
+            else:
+                capat = urm[0] - 1 if urm[1] == 0 else urm[0]
+                if capat <= nr:
+                    pana = ''
+                else:
+                    pana = _('până la măsura {0}', capat)
+            if pana:
+                rez.append(_('De la {0}', loc) + ' ' + pana + ': ' + txt + '.')
+            else:
+                rez.append(loc[0].upper() + loc[1:] + ': ' + txt + '.')
+        return rez
 
     # ---------- în cuvinte ----------
     def descrie(self, prima: int, ultima: int, portative: list, opt: cuvinte.Optiuni) -> str:
