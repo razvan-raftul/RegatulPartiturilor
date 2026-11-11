@@ -887,6 +887,11 @@ class Fereastra(wx.Frame):
             if (prima, ultima) != (self.P.numere[0], self.P.numere[-1]):
                 bucata = redare.fara_repetitii(bucata)      # doar o parte aleasă: se cântă exact ce e ales, o dată, în ordinea scrisă
             try:
+                # tempoul stă de obicei doar pe mâna dreaptă, în prima măsură: îl punem și în bucata aleasă
+                bucata = redare.cu_tempo(bucata, self.P.scor, prima, ultima)
+            except Exception:
+                traceback.print_exc()
+            try:
                 batai = redare.batai(bucata)
             except Exception:
                 traceback.print_exc()
@@ -1463,6 +1468,10 @@ class Fereastra(wx.Frame):
                     voce.spune(_('Măsura asta e goală.'), intrerupe=True)
                     return
                 bucata = P.extrage(nr, nr, list(range(len(P.portative))))
+                try:
+                    bucata = redare.cu_tempo(bucata, scor, nr, nr)
+                except Exception:
+                    traceback.print_exc()
             date = redare.cu_program(redare.midi_octeti(bucata), self._w_instrument)
             if self.metronom:
                 date = redare.cu_metronom(date, redare.batai(bucata), self.volum_metronom)
