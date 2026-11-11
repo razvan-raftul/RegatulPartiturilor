@@ -8,10 +8,56 @@ import tempfile
 import threading
 import time
 
-from music21 import bar, meter, repeat, spanner, tempo
+from music21 import bar, meter, repeat, spanner, stream, tempo
 
 TEMPO_IMPLICIT = 100       # dacă partitura nu are tempo scris
 _ALIAS = 'regatulredare'
+
+
+def cu_tempo(bucata, scor, prima, ultima):
+    """Pune în bucata de redat indicațiile de metronom din toată partitura.
+    De obicei tempoul e scris doar pe mâna dreaptă (și doar în prima măsură); fără asta, mâna stângă
+    singură sau o bucată din mijloc se cântau la tempoul implicit (100), deci mai repede sau mai rar.
+    Se pune tempoul valabil la începutul bucății și schimbările de tempo din interiorul ei, pe primul portativ."""
+    marci = []
+    for mm in scor.recurse().getElementsByClass(tempo.MetronomeMark):
+        m = mm.activeSite
+        off = float(mm.offset) if isinstance(m, stream.Measure) else 0.0
+        if not isinstance(m, stream.Measure):
+            m = mm.getContextByClass(stream.Measure)
+        if m is None or m.number is None:
+            continue
+        marci.append((int(m.number), off, mm))
+    if not marci:
+        return bucata
+    s = copy.deepcopy(bucata)
+    if not s.parts:
+        return bucata
+    masuri = list(s.parts[0].getElementsByClass(stream.Measure))
+    if not masuri:
+        return bucata
+    for vechi in list(s.recurse().getElementsByClass(tempo.MetronomeMark)):
+        if vechi.activeSite is not None:
+            vechi.activeSite.remove(vechi)
+    dupa_nr = {}
+    for m in masuri:
+        if m.number is not None:
+            dupa_nr.setdefault(int(m.number), m)
+    marci.sort(key=lambda x: (x[0], x[1]))
+    la_inceput = None
+    vazute = set()
+    for nr, off, mm in marci:
+        cheie = (nr, round(off, 3))
+        if cheie in vazute:            # aceeași indicație scrisă pe ambele portative
+            continue
+        vazute.add(cheie)
+        if nr < prima or (nr == prima and off <= 1e-6):
+            la_inceput = mm
+        elif nr <= ultima and nr in dupa_nr:
+            dupa_nr[nr].insert(off, copy.deepcopy(mm))
+    if la_inceput is not None:
+        masuri[0].insert(0, copy.deepcopy(la_inceput))
+    return s
 
 
 def fa_midi(scor, procent=100) -> str:
