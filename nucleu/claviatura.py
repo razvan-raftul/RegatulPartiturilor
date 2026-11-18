@@ -1,7 +1,10 @@
 """Claviatura: tastatura calculatorului devine pian, pe două etaje.
 Jos: rândul de la Z la 3 de pe blocul numeric = tastele albe (do re mi fa sol la si do ...),
-rândul de deasupra, mutat cu o tastă la dreapta = negrele (S do diez, D re diez, F gol, G fa diez, H sol diez, J la diez, K gol...).
-Sus, la fel, cu o octavă mai jos: rândul de la Tab (până la 6 de pe blocul numeric) = albe,
+rândul de deasupra, mutat cu o tastă la dreapta = negrele (S do diez, D re diez, F gol, G fa diez, H sol diez, J la diez, K gol,
+L, ;, ' gol, Enter fa diez, 4 sol diez și 5 la diez de pe blocul numeric).
+Control plus o tastă albă: nota aceea devine prima (pe Z și pe Tab), iar albele merg de acolo în sus ca pe pian (sol, la, si, do...);
+negrele se mută și ele, ca să stea tot între albele potrivite.
+Sus, la fel, cu o octavă mai jos: rândul de la Tab (până la ]) = albe,
 rândul cifrelor de la 1 = negre (1 do diez, 2 re diez, 3 gol, 4 fa diez, 5 sol diez, 6 la diez, 7 gol...).
 Shift stânga e „bender”: cât îl ții apăsat, nota tremură (vibrato din pitch bend).
 Tastele se recunosc după codul fizic (scan code), deci nu contează aranjarea tastaturii.
@@ -14,30 +17,55 @@ from .limba import _
 _TREPTE = [0, 2, 4, 5, 7, 9, 11]      # do re mi fa sol la si, în semitonuri
 
 
-def _etaj(albe, negre, baza):
-    """Tastele unui etaj: albe pe trepte, negre între ele (după mi și după si rămâne gol)."""
+def _etaj(albe, negre, baza, prima=0):
+    """Tastele unui etaj: albe pe trepte, începând cu treapta `prima` (0 = do, 4 = sol);
+    o neagră stă între albele i și i+1, iar după mi și după si rămâne gol."""
     t = {}
     for i, sc in enumerate(albe):
         if sc is not None:
-            t[sc] = baza + 12 * (i // 7) + _TREPTE[i % 7]
+            j = prima + i
+            t[sc] = baza + 12 * (j // 7) + _TREPTE[j % 7]
     for i, sc in enumerate(negre):
-        if sc is not None and i % 7 not in (2, 6):
-            t[sc] = baza + 12 * (i // 7) + _TREPTE[i % 7] + 1
+        j = prima + i
+        if sc is not None and j % 7 not in (2, 6):
+            t[sc] = baza + 12 * (j // 7) + _TREPTE[j % 7] + 1
     return t
 
 
 # etajul de jos (do din setări, de obicei do 4)
 ALBE_JOS = [0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x4F, 0x50, 0x51]
 #           Z,    X,    C,    V,    B,    N,    M,  virgulă, punct, /, Shift dr., 1, 2, 3 (bloc numeric)
-NEGRE_JOS = [0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2B, 0x1C]
-#           S,    D,    F(gol), G,  H,    J,    K(gol), L,  ;,   '(gol), tasta de lângă Enter, Enter
-# etajul de sus: o octavă mai jos
-ALBE_SUS = [0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x4B, 0x4C, 0x4D]
-#           Tab,  Q,    W,    E,    R,    T,    Y,    U,    I,    O,    P,    [,    ],    4, 5, 6 (bloc numeric)
+NEGRE_JOS = [0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x1C, 0x4B, 0x4C, 0x4D]
+#           S,    D,    F(gol), G,  H,    J,    K(gol), L,  ;,   '(gol), Enter, 4, 5, 6(gol) (bloc numeric)
+# etajul de sus: o octavă mai jos (4, 5, 6 de pe blocul numeric sunt acum negre jos)
+ALBE_SUS = [0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B]
+#           Tab,  Q,    W,    E,    R,    T,    Y,    U,    I,    O,    P,    [,    ]
 NEGRE_SUS = [0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E]
 #           1,    2,    3(gol), 4,  5,    6,    7(gol), 8,  9,    0(gol), minus, egal, Backspace
 
-TASTE = {**_etaj(ALBE_JOS, NEGRE_JOS, 0), **_etaj(ALBE_SUS, NEGRE_SUS, -12)}
+
+def taste(prima=0):
+    """Toate tastele claviaturii (cod fizic -> semitonuri față de do), cu prima notă pe treapta `prima`."""
+    return {**_etaj(ALBE_JOS, NEGRE_JOS, 0, prima), **_etaj(ALBE_SUS, NEGRE_SUS, -12, prima)}
+
+
+TASTE = taste(0)
+# toate tastele care pot fi note, oricare ar fi prima notă (Enter și 4, 5, 6 de pe blocul numeric pot cădea pe un gol)
+TOATE_TASTELE = set(ALBE_JOS + NEGRE_JOS + ALBE_SUS + NEGRE_SUS)
+ALBE = set(ALBE_JOS + ALBE_SUS)
+
+
+def treapta_albei(sc, prima=0):
+    """Treapta (0 = do ... 6 = si) a tastei albe `sc` în aranjarea de acum, sau None dacă nu e albă."""
+    for rand in (ALBE_JOS, ALBE_SUS):
+        if sc in rand:
+            return (prima + rand.index(sc)) % 7
+    return None
+
+
+NUME_TREPTE = ['do', 're', 'mi', 'fa', 'sol', 'la', 'si']
+
+
 # tastele de pe blocul numeric care, fără Num Lock, sunt și săgeți sau Page Down (se deosebesc după bitul „extins”)
 BLOC_NUMERIC = {0x4B, 0x4C, 0x4D, 0x4F, 0x50, 0x51}
 TASTA_BENDER = 0x2A            # Shift stânga
