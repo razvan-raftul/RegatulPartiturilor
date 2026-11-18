@@ -24,7 +24,7 @@ import wx.lib.scrolledpanel as scrolled  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nucleu import limba  # noqa: E402
 from nucleu.limba import _  # noqa: E402
-from nucleu import VERSIUNE, actualizare, auz, auz_absolut, fisiere_audio, inregistrare, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
+from nucleu import VERSIUNE, actualizare, auz, auz_absolut, desen, fisiere_audio, inregistrare, midi_in, braille, captura, claviatura, cuprins, cuvinte, partitura, recunoastere, redare, scriere, sunet_iesire, sunet_pornire, sunete, voce  # noqa: E402
 
 NUME = 'Music Box'
 INDEMN = _('Nicio partitură deschisă. Deschide o partitură cu Control O.')
@@ -182,6 +182,7 @@ class Fereastra(wx.Frame):
         self.sint.program = self.instrumente[self.instrument][2]
         self.do_clav = int(self.setari.get('octava_claviatura', 60))
         self.transpunere = int(self.setari.get('transpunere', 0))
+        self.prima_clav = int(self.setari.get('prima_nota_claviatura', 0)) % 7   # treapta de pe Z: 0 = do, 4 = sol
         self._apasate = {}                   # tasta fizică -> nota care sună
         self._vibrato = claviatura.Vibrato(self.sint)
         self._bender_apasat = False
@@ -1278,12 +1279,27 @@ class Fereastra(wx.Frame):
                          (_('Deschide pentru citit (În cuvinte, Braille, redare)'), self.scriere_deschide),
                          (_('Salvează ca MusicXML...'), lambda e: self.scriere_salveaza(False)),
                          (_('Salvează ca BRF...'), lambda e: self.scriere_salveaza(True)),
+                         (_('Salvează desenul partiturii (imagine)...'), self.scriere_salveaza_desen),
                          (_('Cum se scrie'), lambda e: self.mesaj(scriere.AJUTOR.strip(), _('Cum se scrie'))),
                          (_('Partitură nouă'), self.scriere_noua)):
             b = wx.Button(pw, label=text)
             b.Bind(wx.EVT_BUTTON, fn)
             rand.Add(b, 0, wx.ALL, 3)
         sw.Add(rand, 0, wx.EXPAND)
+        # desenul partiturii, ca pe hârtie (pentru cine vede); se reface singur la o secundă după ultima tastă.
+        # E dezactivat, ca să nu fie loc la Tab și NVDA să nu intre în el.
+        self.w_desen = None
+        self._desen_svg = ''
+        self._desen_amanat = None
+        self._desen_nr = 0
+        try:
+            import wx.html2
+            self.w_desen = wx.html2.WebView.New(pw, size=(-1, 420))
+            self.w_desen.Disable()
+            sw.Add(self.w_desen, 0, wx.EXPAND | wx.ALL, 3)
+        except Exception:
+            traceback.print_exc()
+            self.w_desen = None
         pw.SetSizer(sw)
         pw.SetupScrolling(scroll_x=False)
         self.carte.AddPage(pw, _('Scrie o partitură'))
@@ -1298,6 +1314,7 @@ class Fereastra(wx.Frame):
             c.Bind(wx.EVT_CHOICE, self._ciorna_schimbata)
         self.w_tempo.Bind(wx.EVT_SPINCTRL, self._ciorna_schimbata)
         self.w_ana.Bind(wx.EVT_CHECKBOX, self._ciorna_schimbata)
+        self._deseneaza_amanat(100)
 
     _FIS_CIORNA = os.path.join(DIR_SETARI, 'ciorna-partitura.json')
 
@@ -1322,6 +1339,8 @@ class Fereastra(wx.Frame):
         self.w_st.ChangeValue(d.get('stanga', ''))
         self.w_vers.ChangeValue(d.get('versuri', ''))
         self._w_instrument = tuple(d.get('instrument', (0, 0)))
+        if getattr(self, '_desen_nr', None) is not None and hasattr(self, 'w_desen'):
+            self._deseneaza_amanat(100)
         progs = [tuple(x[2]) for x in self.instrumente]
         if self._w_instrument in progs:
             self._selecteaza_in_arbore(self.w_instr, self._noduri_scriere, progs.index(self._w_instrument))
@@ -1390,8 +1409,82 @@ class Fereastra(wx.Frame):
         if self._ciorna_amanata:
             self._ciorna_amanata.Stop()
         self._ciorna_amanata = wx.CallLater(1000, self._salveaza_ciorna)
+        self._deseneaza_amanat()
         if e:
             e.Skip()
+
+    # ---------------- desenul partiturii ----------------
+    def _deseneaza_amanat(self, ms=1000):
+        if self._desen_amanat:
+            self._desen_amanat.Stop()
+        self._desen_amanat = wx.CallLater(ms, self._deseneaza)
+
+    def _deseneaza(self):
+        """Face desenul în fundal (music21 + Verovio) și îl pune în pagină când e gata; un desen mai vechi se aruncă."""
+        self._desen_amanat = None
+        if self.w_desen is None:
+            return
+        if not desen.disponibil():
+            self.w_desen.SetPage(desen.html('', _('Desenul partiturii nu e disponibil (lipsește Verovio).')), '')
+            return
+        self._desen_nr += 1
+        nr = self._desen_nr
+        d = self._scriere_date()
+
+        def lucreaza():
+            try:
+                if not (d['dreapta'].strip() or d['stanga'].strip()):
+                    rez = ('', _('Scrie notele și aici apare partitura.'))
+                else:
+                    scor, _p = scriere.construieste(d['dreapta'], d['stanga'], d['titlu'], d['compozitor'], d['masura'],
+                                                    d['alteratii'], d['tempo'], d['anacruza'], d.get('versuri', ''))
+                    rez = (desen.svg(scor), '')
+            except scriere.EroareScriere:
+                rez = None                     # greșeală în scriere: rămâne desenul de dinainte
+            except Exception:
+                traceback.print_exc()
+                rez = None
+            wx.CallAfter(gata, rez)
+
+        def gata(rez):
+            if nr != self._desen_nr or rez is None or self.w_desen is None:
+                return
+            self._desen_svg = rez[0]
+            try:
+                self.w_desen.SetPage(desen.html(rez[0], rez[1]), '')
+            except Exception:
+                traceback.print_exc()
+
+        threading.Thread(target=lucreaza, daemon=True).start()
+
+    def scriere_salveaza_desen(self, e=None):
+        """Salvează desenul partiturii ca imagine SVG (se deschide în Chrome, Edge sau orice browser)."""
+        if not desen.disponibil():
+            self.mesaj(_('Desenul partiturii nu e disponibil (lipsește Verovio).'), _('Scrie o partitură'))
+            return
+        scor, _p = self._scriere_scor()
+        if scor is None:
+            return
+        try:
+            text = desen.svg(scor)
+        except Exception as ex:
+            traceback.print_exc()
+            self.mesaj(_('Nu am putut desena partitura. Eroare: {0}', ex), _('Scrie o partitură'))
+            return
+        nume = (self.w_titlu.GetValue().strip() or _('Partitură')) + '.svg'
+        for c in '\\/:*?"<>|':
+            nume = nume.replace(c, '_')
+        with wx.FileDialog(self, _('Salvează desenul partiturii'), defaultFile=nume, wildcard='SVG (*.svg)|*.svg',
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            cale = dlg.GetPath()
+        try:
+            with open(cale, 'w', encoding='utf-8') as f:
+                f.write(text)
+            voce.spune(_('Am salvat desenul: {0}. Se deschide în Chrome sau Edge.', os.path.basename(cale)), intrerupe=True)
+        except Exception as ex:
+            self.mesaj(_('Nu am putut salva. Eroare: {0}', ex), _('Scrie o partitură'))
 
     def _salveaza_ciorna(self, spune=False):
         """Partitura la care lucrezi se scrie în Partiturile mele (singură, la o secundă după ce te oprești,
@@ -2154,9 +2247,10 @@ class Fereastra(wx.Frame):
     # ---------------- claviatura ----------------
     def _clav_text(self):
         nume = self.instrumente[self.instrument][1]
-        o = claviatura.nume_octava(self.do_clav)
+        z = self.do_clav + self._taste_clav()[0x2C]
+        o = f'{claviatura.NUME_TREPTE[self.prima_clav]} {claviatura.nume_octava(z - claviatura._TREPTE[self.prima_clav])}'
         tr = _('transpus {0:+d} semitonuri', self.transpunere) if self.transpunere else 'netranspus'
-        self.t_clav.SetValue(_('Claviatura. Instrument: {0}. Z e do {1}, {2}.\nRândul de jos, de la Z la 3 de pe blocul numeric: do, re, mi și tot așa, două octave. Diezii sunt deasupra, cu o tastă mai la dreapta: S do diez, D re diez, F gol, G fa diez, și tot așa. Rândul de la Tab și cifrele de la 1 sunt la fel, cu o octavă mai jos. Shift stânga face nota să tremure.\nSăgeată dreapta sau stânga: octava. Săgeată sus sau jos: instrumentul. Control săgeată dreapta sau stânga: transpui cu un semiton. Escape: ieși.', nume, o, tr)
+        self.t_clav.SetValue(_('Claviatura. Instrument: {0}. Z e {1}, {2}.\nRândul de jos, de la Z la 3 de pe blocul numeric: notele albe la rând, două octave. Diezii sunt deasupra, cu o tastă mai la dreapta; după Enter vin 4 și 5 de pe blocul numeric. Rândul de la Tab și cifrele de la 1 sunt la fel, cu o octavă mai jos. Shift stânga face nota să tremure.\nControl plus o tastă albă: nota aceea devine prima, pe Z. Săgeată dreapta sau stânga: octava. Săgeată sus sau jos: instrumentul. Control săgeată dreapta sau stânga: transpui cu un semiton. Escape: ieși.', nume, o, tr)
                              + '\n' + _('Spațiu: deschide sau închide categoria de instrumente.'))
         self.t_clav.SetInsertionPoint(0)
 
@@ -2191,7 +2285,11 @@ class Fereastra(wx.Frame):
             if sageata in (-1, 1):
                 self.transpune(sageata)
                 return
-            e.Skip()                     # Control 1, Control O și celelalte merg în continuare
+            sc = self._sc(e)
+            if sc in claviatura.ALBE and k != wx.WXK_SHIFT and not e.ShiftDown():
+                self.alege_prima_nota(claviatura.treapta_albei(sc, self.prima_clav))
+                return
+            e.Skip()                     # Control 1, Control 2 și celelalte (pe clape negre) merg în continuare
             return
         if k == wx.WXK_ESCAPE:
             self.arata_sub(0)
@@ -2217,8 +2315,9 @@ class Fereastra(wx.Frame):
                 self._bender_apasat = True
                 self._vibrato.porneste()
             return
-        if sc in claviatura.TASTE and sc not in self._apasate:
-            nota = self.do_clav + claviatura.TASTE[sc] + self.transpunere
+        taste = self._taste_clav()
+        if sc in taste and sc not in self._apasate:
+            nota = self.do_clav + taste[sc] + self.transpunere
             if not self.sint.deschis():
                 try:
                     self.sint.program = self.instrumente[self.instrument][2]
@@ -2243,6 +2342,20 @@ class Fereastra(wx.Frame):
                 if n2 is not None:
                     self.sint.ridica(*n2)
 
+    def _taste_clav(self):
+        """Tastele claviaturii cu prima notă aleasă (Control plus o tastă albă)."""
+        return claviatura.taste(self.prima_clav)
+
+    def alege_prima_nota(self, treapta):
+        """Nota de pe treapta aleasă trece pe Z (și pe Tab); albele merg de acolo în sus, negrele se mută cu ele."""
+        self.prima_clav = treapta % 7
+        self.setari['prima_nota_claviatura'] = self.prima_clav
+        scrie_setari(self.setari)
+        text = _('Nota {0} mutată.', claviatura.NUME_TREPTE[self.prima_clav])
+        self.SetStatusText(text)
+        voce.spune(text, intrerupe=True)
+        self._clav_text()
+
     @staticmethod
     def _sc(e):
         """Codul fizic al tastei (fără bitul de tastă extinsă: Shift dreapta și cel stâng diferă prin cod)."""
@@ -2258,7 +2371,7 @@ class Fereastra(wx.Frame):
 
     def _sc_numeric(self, e):
         """Adevărat dacă tasta e 3 de pe blocul numeric fără Num Lock (aceeași cu Page Down): e notă, nu octavă."""
-        return os.name == 'nt' and not (e.GetRawKeyFlags() & (1 << 24)) and ((e.GetRawKeyFlags() >> 16) & 0xFF) in claviatura.TASTE
+        return os.name == 'nt' and not (e.GetRawKeyFlags() & (1 << 24)) and ((e.GetRawKeyFlags() >> 16) & 0xFF) in claviatura.TOATE_TASTELE
 
     def transpune(self, pas):
         self.transpunere = min(12, max(-12, self.transpunere + pas))
@@ -2514,7 +2627,8 @@ class Fereastra(wx.Frame):
             cheie = chr(k).lower()
         else:
             cheie = None
-        if cheie and mods:
+        clav_prima = foc is self.t_clav and ctrl and not shift and sc in claviatura.ALBE and k != wx.WXK_SHIFT
+        if cheie and mods and not clav_prima:       # în claviatură, Control plus o clapă albă alege prima notă
             text = self._acceleratori().get((mods, cheie))
             if text:
                 return zi(text)
@@ -2533,8 +2647,11 @@ class Fereastra(wx.Frame):
                 return zi(_('deschide sau închide categoria de instrumente.'))
             if sc == claviatura.TASTA_BENDER:
                 return zi(_('nota tremură cât ții tasta.'))
-            if sc in claviatura.TASTE:
-                n = self.do_clav + claviatura.TASTE[sc] + self.transpunere
+            if clav_prima:
+                return zi(_('{0} devine prima notă, pe Z.', claviatura.NUME_TREPTE[claviatura.treapta_albei(sc, self.prima_clav)]))
+            taste = self._taste_clav()
+            if sc in taste:
+                n = self.do_clav + taste[sc] + self.transpunere
                 return zi(_('nota {0} {1}.', auz.SOLFEGIU[n % 12].lower(), n // 12 - 1))
             return zi(_('nu face nimic în claviatură.'))
         # fișiere audio
@@ -3941,6 +4058,12 @@ def autotest(fisier, iesire):
         rez.append(f'AUZ ABSOLUT {_ap.incheie(_r, 1)} test {len(_ap.runda_test().incercari)} note')
         rez.append(f'AUZ DURATE {len(_ed.durate)} sunete, {len(_ed.pasi)} pasi, citit {auz.citeste_durate("2, 1/2")}, raspuns: {_sd.raspunde_text(", ".join(str(b) for b in _ed.durate))[0]}')
         rez.append('SCRIERE LITERE ' + str(len(scriere.construieste('c4p d e f\nbb4d c#5d', '')[0].parts[0].recurse().notes)))
+        try:
+            _svg = desen.svg(sc_s)
+            _nn = _svg.count('class="note')
+            rez.append(f'DESEN svg {len(_svg)} caractere, note {_nn}')
+        except Exception as _ex:
+            rez.append(f'DESEN EROARE {_ex!r} (verovio {desen.disponibil()})')
         _sv, _pv = scriere.construieste('do4 p re mi fa', '', versuri='Ma-mă dra-gă')
         rez.append(f'VERSURI {[ly.text for n in _sv.recurse().notes for ly in n.lyrics]} TIMPI {scriere.timpi_rand("do4 s re mi fa sol la si do5 do si4 la sol fa mi re do", 0)}')
         try:

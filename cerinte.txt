@@ -3,3 +3,4 @@ wxPython>=4.2.2
 numpy
 Pillow
 pypdfium2>=4.30
+verovio>=4.3
