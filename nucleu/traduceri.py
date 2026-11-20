@@ -1,6 +1,12 @@
 """Traducerile textelor programului (cheia = textul în română din cod). Făcut din ~/tr/*.py."""
 # flake8: noqa
 T = {
+    'Mai des cele bifate, dar apar și celelalte': {'en': 'The checked ones more often, but the others appear too', 'fr': 'Les cochés plus souvent, mais les autres apparaissent aussi', 'de': 'Die angekreuzten öfter, aber auch die anderen kommen vor', 'es': 'Los marcados más a menudo, pero también aparecen los demás', 'it': 'Quelli spuntati più spesso, ma compaiono anche gli altri'},
+    'Cum se cântă acordul': {'en': 'How the chord is played', 'fr': "Comment l'accord est joué", 'de': 'Wie der Akkord gespielt wird', 'es': 'Cómo se toca el acorde', 'it': "Come si suona l'accordo"},
+    'Melodic': {'en': 'Melodic', 'fr': 'Mélodique', 'de': 'Melodisch', 'es': 'Melódico', 'it': 'Melodico'},
+    'Armonic, apoi melodic': {'en': 'Harmonic, then melodic', 'fr': 'Harmonique, puis mélodique', 'de': 'Harmonisch, dann melodisch', 'es': 'Armónico, luego melódico', 'it': 'Armonico, poi melodico'},
+    'Melodic, apoi armonic': {'en': 'Melodic, then harmonic', 'fr': 'Mélodique, puis harmonique', 'de': 'Melodisch, dann harmonisch', 'es': 'Melódico, luego armónico', 'it': 'Melodico, poi armonico'},
+    'La întâmplare': {'en': 'Random', 'fr': 'Au hasard', 'de': 'Zufällig', 'es': 'Al azar', 'it': 'A caso'},
     '\n\nSalvez totuși?': {'en': '\n\nSave anyway?', 'fr': '\n\nEnregistrer quand même ?', 'de': '\n\nTrotzdem speichern?', 'es': '\n\n¿Guardar de todos modos?', 'it': '\n\nSalvare comunque?'},
     ' (Eroare la căutarea pieselor: {0})': {'en': ' (Error while looking for the pieces: {0})', 'fr': ' (Erreur lors de la recherche des pièces : {0})', 'de': ' (Fehler bei der Suche nach den Stücken: {0})', 'es': ' (Error al buscar las piezas: {0})', 'it': ' (Errore nella ricerca dei brani: {0})'},
     ' Acum două exerciții pentru nota ta cea mai slabă: {0}.': {'en': ' Now two exercises for your weakest note: {0}.', 'fr': ' Maintenant deux exercices pour ta note la plus faible : {0}.', 'de': ' Jetzt zwei Übungen für deinen schwächsten Ton: {0}.', 'es': ' Ahora dos ejercicios para tu nota más débil: {0}.', 'it': ' Ora due esercizi per la tua nota più debole: {0}.'},

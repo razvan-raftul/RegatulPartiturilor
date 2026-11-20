@@ -10,6 +10,7 @@ LITERE = [_('C'), _('C diez'), _('D'), _('E bemol'), _('E'), _('F'), _('F diez')
 INTERVALE = [_('Primă perfectă'), _('Secundă mică'), _('Secundă mare'), _('Terță mică'), _('Terță mare'), _('Cvartă perfectă'),
              _('Triton'), _('Cvintă perfectă'), _('Sextă mică'), _('Sextă mare'), _('Septimă mică'), _('Septimă mare'), _('Octavă perfectă')]
 REDARE_INTERVAL = [_('Melodic ascendent'), _('Melodic descendent'), _('Armonic')]
+REDARE_ACORD = [_('Melodic'), _('Armonic'), _('Armonic, apoi melodic'), _('Melodic, apoi armonic'), _('La întâmplare')]
 
 ACORDURI = [(_('Major'), [0, 4, 7]), (_('Minor'), [0, 3, 7]), (_('Micșorat'), [0, 3, 6]), (_('Mărit'), [0, 4, 8]),
             (_('Major 7'), [0, 4, 7, 11]), (_('Dominant 7'), [0, 4, 7, 10]), (_('Minor 7'), [0, 3, 7, 10]),
@@ -22,7 +23,8 @@ EXERCITII = [_('Note'), _('Intervale'), _('Acorduri'), _('Durate (ritm)'), _('Au
 DURATE = [(_('întreagă'), 4.0, '4'), (_('doime cu punct'), 3.0, '3'), (_('doime'), 2.0, '2'),
           (_('pătrime cu punct'), 1.5, '1 1/2'), (_('pătrime'), 1.0, '1'), (_('optime cu punct'), 0.75, '3/4'),
           (_('optime'), 0.5, '1/2'), (_('șaisprezecime'), 0.25, '1/4')]
-IZOLARE = [_('Toate la fel de des'), _('Mai des cele bifate'), _('Doar cele bifate')]
+# 0 = doar cele bifate, 1 = mai des cele bifate (setările vechi aveau 0 „toate la fel”, 2 „doar”: vezi _izolare)
+IZOLARE = [_('Doar cele bifate'), _('Mai des cele bifate, dar apar și celelalte')]
 
 
 @dataclass
@@ -30,11 +32,12 @@ class Setari:
     exercitiu: int = 0                 # 0 note, 1 intervale, 2 acorduri
     litere: bool = False               # C D E în loc de Do Re Mi
     octave: list = field(default_factory=lambda: [3, 4, 5])
-    izolare: int = 0
+    izolare: int = 0                   # 0 doar cele bifate, 1 mai des cele bifate
     note_bifate: list = field(default_factory=list)        # 0–11
     intervale_bifate: list = field(default_factory=list)   # 0–12 semitonuri
     redare_interval: int = 0
     acorduri_bifate: list = field(default_factory=list)    # indici în ACORDURI
+    redare_acord: int = 2              # indice în REDARE_ACORD
     intreaba_tipul: bool = True        # la acorduri: ce întrebări se pun (cel puțin una)
     rasturnari: bool = False
     fundamentala: bool = False
@@ -66,19 +69,26 @@ def nume_note(litere):
     return LITERE if litere else SOLFEGIU
 
 
+def _izolare(v):
+    """1 = mai des cele bifate; orice altceva (și setările vechi 0 și 2) = doar cele bifate."""
+    return 1 if v == 1 else 0
+
+
 def _alege(n, bifate, izolare, rnd):
-    """Un indice din range(n), ținând cont de cele bifate (mai des sau doar ele)."""
+    """Un indice din range(n). Dacă e ceva bifat, se întreabă doar ce e bifat; la „mai des”, din când în când și altceva.
+    Dacă nu e nimic bifat, merge orice."""
     bifate = [b for b in bifate if 0 <= b < n]
-    if bifate and izolare == 2:
-        return rnd.choice(bifate)
-    if bifate and izolare == 1 and rnd.random() < 0.7:
-        return rnd.choice(bifate)
-    return rnd.randrange(n)
+    if not bifate:
+        return rnd.randrange(n)
+    if _izolare(izolare) == 1 and rnd.random() < 0.3:
+        return rnd.randrange(n)
+    return rnd.choice(bifate)
 
 
 def _optiuni(toate, bifate, izolare):
     """Lista de răspunsuri: la „doar cele bifate” apar doar ele. Întoarce (etichete, indicii originali)."""
-    if izolare == 2 and bifate:
+    bifate = [b for b in bifate if 0 <= b < len(toate)]
+    if _izolare(izolare) == 0 and bifate:
         idx = sorted(set(bifate))
     else:
         idx = list(range(len(toate)))
@@ -132,9 +142,24 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
     if s.fundamentala:
         intrebari.append(Intrebare(_('Alege fundamentala acordului.') if intrebari else _('Ascultă acordul și alege fundamentala.'),
                                    list(numele), rad_pc))
-    pasi = [(note_, 1600, 250)] + [([n], 350, 0) for n in note_] + [(note_, 1400, 0)]
+    pasi = pasi_acord(note_, s.redare_acord, rnd)
     descriere = _('Acordul era {0} pe {1}', nume, numele[rad_pc]) + (f', {RASTURNARI[inv]}' if s.rasturnari else '') + '.'
     return Exercitiu(intrebari, pasi, descriere)
+
+
+def pasi_acord(note_, redare, rnd=random):
+    """Cum se cântă acordul: 0 melodic, 1 armonic, 2 armonic apoi melodic, 3 melodic apoi armonic, 4 la întâmplare."""
+    if redare not in (0, 1, 2, 3):
+        redare = rnd.randrange(4)
+    melodic = [([n], 550, 60) for n in note_[:-1]] + [([note_[-1]], 900, 0)]
+    armonic = [(list(note_), 1600, 0)]
+    if redare == 0:
+        return melodic
+    if redare == 1:
+        return armonic
+    if redare == 2:
+        return [(list(note_), 1600, 350)] + melodic
+    return melodic[:-1] + [([note_[-1]], 900, 350)] + armonic
 
 
 def nume_durata(batai):

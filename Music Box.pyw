@@ -1293,9 +1293,8 @@ class Fereastra(wx.Frame):
         self._desen_amanat = None
         self._desen_nr = 0
         try:
-            import importlib
-            html2 = importlib.import_module('wx.html2')    # nu „import wx.html2”: ar face din wx o variabilă locală
-            self.w_desen = html2.WebView.New(pw, size=(-1, 420))
+            import wx.html2
+            self.w_desen = wx.html2.WebView.New(pw, size=(-1, 420))
             self.w_desen.Disable()
             sw.Add(self.w_desen, 0, wx.EXPAND | wx.ALL, 3)
         except Exception:
@@ -1721,6 +1720,9 @@ class Fereastra(wx.Frame):
         self.a_ac = ListaBife(pa, choices=[a[0] for a in auz.ACORDURI], name=_('Acordurile exersate'), size=(-1, 90),
                               la_schimbare=self._auz_schimbat)
         sa.Add(self.a_ac, 0, wx.EXPAND | wx.ALL, 3)
+        self.a_e_rac = eticheta(_('Cum se cântă acordul'))
+        self.a_rac = wx.Choice(pa, choices=auz.REDARE_ACORD, name=_('Cum se cântă acordul'))
+        sa.Add(self.a_rac, 0, wx.ALL, 3)
         self.a_e_ce = eticheta(_('La acorduri, ce spui'))
         self.a_tip = wx.CheckBox(pa, label=_('Tipul acordului (major, minor, micșorat, mărit...)'))
         sa.Add(self.a_tip, 0, wx.ALL, 3)
@@ -1794,12 +1796,13 @@ class Fereastra(wx.Frame):
         for o in s.octave:
             if 1 <= o <= 7:
                 self.a_oct.Check(o - 1)
-        self.a_izol.SetSelection(s.izolare)
+        self.a_izol.SetSelection(1 if s.izolare == 1 else 0)       # setările vechi: 0 și 2 devin „doar cele bifate”
         for lista, bif in ((self.a_note, s.note_bifate), (self.a_int, s.intervale_bifate), (self.a_ac, s.acorduri_bifate)):
             for i in bif:
                 if 0 <= i < lista.GetCount():
                     lista.Check(i)
         self.a_red.SetSelection(s.redare_interval)
+        self.a_rac.SetSelection(s.redare_acord if 0 <= s.redare_acord < len(auz.REDARE_ACORD) else 2)
         self.a_tip.SetValue(s.intreaba_tipul)
         self.a_rast.SetValue(s.rasturnari)
         self.a_fund.SetValue(s.fundamentala)
@@ -1816,7 +1819,7 @@ class Fereastra(wx.Frame):
         k = progs.index(tuple(s.instrument)) if tuple(s.instrument) in progs else 0
         self._selecteaza_in_arbore(self.a_instr, self._noduri_auz, k)
         self._auz_arata_ce_trebuie()
-        for c in (self.a_ex, self.a_nume, self.a_izol, self.a_red):
+        for c in (self.a_ex, self.a_nume, self.a_izol, self.a_red, self.a_rac):
             c.Bind(wx.EVT_CHOICE, self._auz_schimbat)
         for c in (self.a_tip, self.a_rast, self.a_fund):
             c.Bind(wx.EVT_CHECKBOX, self._auz_schimbat)
@@ -1829,7 +1832,7 @@ class Fereastra(wx.Frame):
     def _auz_arata_ce_trebuie(self):
         ex = self.a_ex.GetSelection()
         for ctrl, cand in ((self.a_e_note, 0), (self.a_note, 0), (self.a_e_int, 1), (self.a_int, 1), (self.a_e_red, 1),
-                           (self.a_red, 1), (self.a_e_ac, 2), (self.a_ac, 2), (self.a_e_ce, 2), (self.a_tip, 2), (self.a_rast, 2),
+                           (self.a_red, 1), (self.a_e_ac, 2), (self.a_ac, 2), (self.a_e_rac, 2), (self.a_rac, 2), (self.a_e_ce, 2), (self.a_tip, 2), (self.a_rast, 2),
                            (self.a_fund, 2), (self.a_e_dur, 3), (self.a_dur, 3), (self.a_e_nr, 3), (self.a_nr, 3),
                            (self.a_e_tempo, 3), (self.a_tempo, 3), (self.a_e_text, 3), (self.a_text, 3)):
             ctrl.Show(ex == cand)
@@ -1863,6 +1866,7 @@ class Fereastra(wx.Frame):
         s.intervale_bifate = list(self.a_int.GetCheckedItems())
         s.acorduri_bifate = list(self.a_ac.GetCheckedItems())
         s.redare_interval = max(0, self.a_red.GetSelection())
+        s.redare_acord = max(0, self.a_rac.GetSelection())
         s.intreaba_tipul = self.a_tip.GetValue()
         s.rasturnari = self.a_rast.GetValue()
         s.fundamentala = self.a_fund.GetValue()
