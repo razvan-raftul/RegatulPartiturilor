@@ -1293,8 +1293,9 @@ class Fereastra(wx.Frame):
         self._desen_amanat = None
         self._desen_nr = 0
         try:
-            import wx.html2
-            self.w_desen = wx.html2.WebView.New(pw, size=(-1, 420))
+            import importlib
+            html2 = importlib.import_module('wx.html2')    # nu „import wx.html2”: ar face din wx o variabilă locală
+            self.w_desen = html2.WebView.New(pw, size=(-1, 420))
             self.w_desen.Disable()
             sw.Add(self.w_desen, 0, wx.EXPAND | wx.ALL, 3)
         except Exception:
