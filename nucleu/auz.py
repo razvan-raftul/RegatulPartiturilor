@@ -16,6 +16,7 @@ ACORDURI = [(_('Major'), [0, 4, 7]), (_('Minor'), [0, 3, 7]), (_('Micșorat'), [
             (_('Major 7'), [0, 4, 7, 11]), (_('Dominant 7'), [0, 4, 7, 10]), (_('Minor 7'), [0, 3, 7, 10]),
             (_('Minor major 7'), [0, 3, 7, 11]), (_('Semidiminuat 7'), [0, 3, 6, 10]), (_('Diminuat 7'), [0, 3, 6, 9])]
 RASTURNARI = [_('Poziție fundamentală'), _('Răsturnarea I'), _('Răsturnarea II'), _('Răsturnarea III')]
+SIMETRICE = ([0, 4, 8], [0, 3, 6, 9])       # mărit, diminuat 7: aceleași sunete în orice răsturnare
 
 EXERCITII = [_('Note'), _('Intervale'), _('Acorduri'), _('Durate (ritm)'), _('Auz absolut (ca în studiul din 2025)')]
 
@@ -128,22 +129,25 @@ def genereaza(s: Setari, rnd=random) -> Exercitiu:
     rad_pc = rnd.randrange(12)
     rad = 12 * (o + 1) + rad_pc
     note_ = [rad + x for x in structura]
-    inv = rnd.randrange(len(structura)) if s.rasturnari else 0
+    # acordul mărit și cel micșorat cu septimă micșorată sună la fel în orice răsturnare (enarmonic):
+    # la ele nu se întreabă răsturnarea și se cântă în poziție fundamentală
+    rasturnare = s.rasturnari and structura not in SIMETRICE
+    inv = rnd.randrange(len(structura)) if rasturnare else 0
     for _x in range(inv):
         note_ = note_[1:] + [note_[0] + 12]
     et, idx = _optiuni([a[0] for a in ACORDURI], s.acorduri_bifate, s.izolare)
     intrebari = []
-    tipul = s.intreaba_tipul or not (s.rasturnari or s.fundamentala)
+    tipul = s.intreaba_tipul or not (rasturnare or s.fundamentala)
     if tipul:
         intrebari.append(Intrebare(_('Ascultă acordul și alege tipul corect.'), et, idx.index(k)))
-    if s.rasturnari:
+    if rasturnare:
         intrebari.append(Intrebare(_('Alege răsturnarea.') if intrebari else _('Ascultă acordul și alege răsturnarea.'),
                                    RASTURNARI[:len(structura)], inv))
     if s.fundamentala:
         intrebari.append(Intrebare(_('Alege fundamentala acordului.') if intrebari else _('Ascultă acordul și alege fundamentala.'),
                                    list(numele), rad_pc))
     pasi = pasi_acord(note_, s.redare_acord, rnd)
-    descriere = _('Acordul era {0} pe {1}', nume, numele[rad_pc]) + (f', {RASTURNARI[inv]}' if s.rasturnari else '') + '.'
+    descriere = _('Acordul era {0} pe {1}', nume, numele[rad_pc]) + (f', {RASTURNARI[inv]}' if rasturnare else '') + '.'
     return Exercitiu(intrebari, pasi, descriere)
 
 

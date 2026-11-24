@@ -189,6 +189,7 @@ class Fereastra(wx.Frame):
         self.player_audio = inregistrare.PlayerAudio()
         self._midi_cache = (None, None, None, [])  # (selecția, MIDI la 100%, bătăile, măsurile): nu se mai face din nou la fiecare tempo
         self._redat = None                   # (selecția, procentul, metronomul) cu care se cântă acum
+        self._redat_scriere = None           # (bucata, procentul, metronomul) când se cântă ce ai scris
         self._tempo_amanat = None
         self._ocupat_recunoastere = False
         self._braille_id = 0
@@ -873,6 +874,7 @@ class Fereastra(wx.Frame):
         self.redare.bucla = self.m_bucla.IsChecked()
         self.redare.canta(redare.scrie_temporar(date), de_la_ms, in_pauza)
         self._redat = (sel, self.procent, metronom)
+        self._redat_scriere = None
         # unde începe fiecare măsură în ce se cântă (pentru J și L în timpul redării, ca la un player)
         try:
             masuri = self._midi_cache[3]
@@ -1232,6 +1234,16 @@ class Fereastra(wx.Frame):
             except Exception as ex:
                 traceback.print_exc()
                 self.SetStatusText(_('Nu am putut schimba tempoul. Eroare: {0}', ex))
+        elif (self.redare.stare in ('canta', 'pauza') and self._redat is None and self._redat_scriere
+              and self._redat_scriere[1:] != (self.procent, metronom)):
+            # se cântă ce ai scris în fila Scrie o partitură: metronomul și tempoul se aplică și aici
+            bucata, vechi, _x = self._redat_scriere
+            poz = self.redare.pozitie() * vechi / self.procent
+            try:
+                self._scriere_canta(bucata, poz, in_pauza=(self.redare.stare == 'pauza'))
+            except Exception as ex:
+                traceback.print_exc()
+                self.SetStatusText(_('Nu am putut schimba tempoul. Eroare: {0}', ex))
 
     # ---------------- scrie o partitură ----------------
     def _fila_scriere(self):
@@ -1566,17 +1578,29 @@ class Fereastra(wx.Frame):
                     bucata = redare.cu_tempo(bucata, scor, nr, nr)
                 except Exception:
                     traceback.print_exc()
-            date = redare.cu_program(redare.midi_octeti(bucata), self._w_instrument)
-            if self.metronom:
-                date = redare.cu_metronom(date, redare.batai(bucata), self.volum_metronom)
-            date = redare.schimba_tempo_midi(date, self.procent)
-            self.sint.elibereaza()
-            self._redat = None
-            self.redare.bucla = False
-            self.redare.canta(redare.scrie_temporar(date))
+            self._scriere_canta(bucata)
         except Exception as ex:
             traceback.print_exc()
             self.mesaj(_('Nu am putut reda. Eroare: {0}', ex), _('Redare'))
+
+    def _scriere_canta(self, bucata, de_la_ms=0, in_pauza=False):
+        """Cântă ce ai scris, cu metronomul dacă e pornit. Ce se cântă se ține minte, ca Control Shift M, volumul
+        metronomului și tempoul să se aplice și aici, pe loc, din același loc al muzicii (cerut de Răzvan)."""
+        self.metro.opreste()                         # metronomul care bate singur tace: bate cel al piesei
+        if self.player_audio.stare == 'canta':
+            self.player_audio.pauza_continua()
+        if self.p_fisiere.melodie.stare == 'canta':
+            self.p_fisiere.melodie.pauza_continua()
+        date = redare.cu_program(redare.midi_octeti(bucata), self._w_instrument)
+        metronom = self.volum_metronom if self.metronom else 0
+        if metronom:
+            date = redare.cu_metronom(date, redare.batai(bucata), metronom)
+        date = redare.schimba_tempo_midi(date, self.procent)
+        self.sint.elibereaza()
+        self._redat = None
+        self.redare.bucla = False
+        self.redare.canta(redare.scrie_temporar(date), de_la_ms, in_pauza)
+        self._redat_scriere = (bucata, self.procent, metronom)
 
     def scriere_deschide(self, e=None):
         scor, probleme = self._scriere_scor()
@@ -1984,8 +2008,20 @@ class Fereastra(wx.Frame):
             self.a_text.SelectAll()
 
     def _auz_urmatorul(self, ex_vechi):
-        if self.auz_ses.ex is ex_vechi and self._pagina() is self.p_auz:
-            self.auz_nou()
+        """Următorul exercițiu, care vine singur. Dacă erai în Răspunsuri, lista se umple din nou cu răspunsurile
+        primei întrebări (major, minor...) și NVDA o citește; abia apoi se cântă exercițiul."""
+        if self.auz_ses.ex is not ex_vechi or self._pagina() is not self.p_auz:
+            return
+        in_lista = self.FindFocus() is self.a_rasp
+        self._auz_schimbat()
+        ex = self.auz_ses.nou()
+        self._auz_arata_intrebarea()
+        if in_lista:
+            self.a_intreb.SetFocus()                       # mutat și înapoi, ca NVDA să citească lista nouă
+            wx.CallAfter(self.a_rasp.SetFocus)
+            wx.CallLater(1500, lambda: self.auz_ses.ex is ex and self.auz_asculta())
+        else:
+            self.auz_asculta()
 
 
     # ---------------- auz absolut (ca în studiul din 2025) ----------------
@@ -2854,6 +2890,10 @@ class Fereastra(wx.Frame):
                 return
             if e.ControlDown() and e.ShiftDown() and kc in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
                 self.scriere_asculta(False)                    # Control Shift Enter: ascultă tot
+                return
+            if e.ControlDown() and e.ShiftDown() and not e.AltDown() and (kc == ord('M') or
+                                                                    (os.name == 'nt' and e.GetRawKeyCode() == 0x4D)):
+                self.comuta_metronom()                         # Control Shift M și aici, și cât asculți ce ai scris
                 return
             if (foc is self.w_tempo or foc.GetParent() is self.w_tempo) and kc in (wx.WXK_PAGEUP, wx.WXK_PAGEDOWN) \
                     and not e.ControlDown():
